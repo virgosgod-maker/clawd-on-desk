@@ -130,6 +130,7 @@
     "files": [
       "NOTICE.md",
       "src/**/*",
+      "report/**/*",
       "assets/icon.ico",
       "assets/icons/**/*",
       "assets/icons/agents/**/*",

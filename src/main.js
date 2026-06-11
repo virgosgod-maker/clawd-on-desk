@@ -61,6 +61,7 @@ const {
 const { focusCodexThreadTarget } = require("./session-focus-handoff");
 const { isSessionInProgress } = require("./state-session-snapshot");
 const { getAllAgents } = require("../agents/registry");
+const { registerReportIpc } = require("../report/report-ipc");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -3057,6 +3058,8 @@ registerSessionIpc({
   },
   getLanWsServer: () => _lanWss,
 });
+
+registerReportIpc();
 
 function createWindow() {
   // Read everything from the settings controller. The mirror caches above

@@ -3,6 +3,7 @@
 const { app, BrowserWindow, screen, Menu, Tray, nativeImage, dialog } = require("electron");
 const path = require("path");
 const { keepOutOfTaskbar } = require("./taskbar");
+const { buildReportSubmenu } = require("../report/report-menu");
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
@@ -206,6 +207,10 @@ module.exports = function initMenu(ctx) {
     items.push(
       { type: "separator" },
       {
+        label: t("reportTitle"),
+        submenu: buildReportSubmenu(t),
+      },
+      {
         label: t("settings"),
         click: () => ctx.openSettingsWindow(),
       },
@@ -220,10 +225,11 @@ module.exports = function initMenu(ctx) {
     // #329: surface the update item in the tray menu. The label switches
     // to "Update available · vX" / "Update Ready" when applicable. Click
     // routes to checkForUpdates / quitAndInstall via getUpdateMenuItem.
-    if (typeof ctx.getUpdateMenuItem === "function") {
-      const updateItem = ctx.getUpdateMenuItem();
-      if (updateItem) items.push({ type: "separator" }, updateItem);
-    }
+    // [注释掉] 隐藏托盘菜单的检查更新按钮
+    // if (typeof ctx.getUpdateMenuItem === "function") {
+    //   const updateItem = ctx.getUpdateMenuItem();
+    //   if (updateItem) items.push({ type: "separator" }, updateItem);
+    // }
     items.push(
       { type: "separator" },
       {
@@ -440,15 +446,20 @@ module.exports = function initMenu(ctx) {
     template.push(
       { type: "separator" },
       {
+        label: t("reportTitle"),
+        submenu: buildReportSubmenu(t),
+      },
+      {
         label: t("settings"),
         click: () => ctx.openSettingsWindow(),
       },
     );
     // #329: surface the update item in the right-click context menu too.
-    if (typeof ctx.getUpdateMenuItem === "function") {
-      const updateItem = ctx.getUpdateMenuItem();
-      if (updateItem) template.push({ type: "separator" }, updateItem);
-    }
+    // [注释掉] 隐藏右键菜单的检查更新按钮
+    // if (typeof ctx.getUpdateMenuItem === "function") {
+    //   const updateItem = ctx.getUpdateMenuItem();
+    //   if (updateItem) template.push({ type: "separator" }, updateItem);
+    // }
     template.push(
       { type: "separator" },
       {
