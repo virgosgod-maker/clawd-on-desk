@@ -153,11 +153,24 @@ function getDateStr(daysAgo) {
 
 // ── 共享图标 ────────────────────────────────────────
 
+// ── 色彩系统 ────────────────────────────────────────
+// 使用 CSS 变量便于全局维护，确保 WCAG AA 对比度
 const COLORS = {
-  textPrimary: '#202124', textSecondary: '#5f6368',
-  primary: '#1a73e8', success: '#34a853', warning: '#fbbc04', danger: '#ea4335',
-  bgLight: '#f8f9fa',
-  gradientBlue: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  textPrimary: '#1a1a2e',      // 加深主文字，提升对比度
+  textSecondary: '#64748b',    // 中性灰，适合辅助信息
+  primary: '#4f46e5',          // Indigo 主色调，现代感
+  primaryLight: '#818cf8',     // 浅色主色调
+  primaryDark: '#3730a3',      // 深色主色调
+  success: '#059669',          // Emerald 绿，对比度更好
+  warning: '#d97706',          // Amber 橙，对比度达标
+  danger: '#dc2626',           // Red 红，对比度达标
+  bgLight: '#f8fafc',          // 更中性的背景色
+  bgCard: '#ffffff',
+  borderLight: '#e2e8f0',     // 柔和边框
+  gradientBlue: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)',
+  gradientSuccess: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+  gradientWarning: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+  gradientDanger: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
 }
 
 const ICONS = {
@@ -196,51 +209,736 @@ function hitRateColor(rate) {
 function buildReportCss(statsCols = 4) {
   const C = COLORS
   return `
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);min-height:100vh;padding:20px;color:${C.textPrimary}}
-.container{max-width:900px;margin:0 auto}
-.header{background:${C.gradientBlue};border-radius:16px;padding:24px 28px;margin-bottom:20px;color:#fff;box-shadow:0 4px 15px rgba(102,126,234,.4)}
-.header-title{font-size:24px;font-weight:bold;display:flex;align-items:center;gap:10px}
-.header-date{font-size:13px;opacity:.9;margin-top:6px}
-.card{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
-.card-title{font-size:16px;font-weight:bold;color:${C.textPrimary};margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.stats-grid{display:grid;grid-template-columns:repeat(${statsCols},1fr);gap:12px;margin-bottom:16px}
-.stat-card{padding:16px;border-radius:10px;text-align:center}
-.stat-card.blue{background:linear-gradient(135deg,#667eea20,#764ba220);border:1px solid #667eea40}
-.stat-card.green{background:linear-gradient(135deg,#43e97b20,#38f9d720);border:1px solid #43e97b40}
-.stat-card.orange{background:linear-gradient(135deg,#fa709a20,#fee14020);border:1px solid #fa709a40}
-.stat-card.purple{background:linear-gradient(135deg,#a18cd120,#fbc2eb20);border:1px solid #a18cd140}
-.stat-label{font-size:12px;color:${C.textSecondary};margin-bottom:4px}
-.stat-value{font-size:22px;font-weight:bold;font-family:Consolas,monospace}
-.stat-card.blue .stat-value{color:#667eea}
-.stat-card.green .stat-value{color:#34a853}
-.stat-card.orange .stat-value{color:#ff9800}
-.stat-card.purple .stat-value{color:#9c27b0}
-.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-.chart-container{position:relative;height:250px}
-.model-card{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;border-left:4px solid ${C.primary}}
-.model-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.model-name{font-weight:bold;color:${C.primary};font-size:14px;display:flex;align-items:center;gap:6px}
-.model-cost{font-weight:bold;color:${C.danger};font-family:Consolas,monospace}
-.model-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.model-stat{text-align:center;padding:8px 4px;background:${C.bgLight};border-radius:6px}
-.model-stat-label{font-size:11px;color:${C.textSecondary};display:flex;align-items:center;justify-content:center;gap:3px}
-.model-stat-value{font-size:13px;font-weight:bold;font-family:Consolas,monospace;margin-top:2px}
-.day-header{display:grid;grid-template-columns:140px repeat(7,1fr);gap:4px;padding:8px 12px;font-size:11px;color:${C.textSecondary};font-weight:bold;border-bottom:2px solid #e0e0e0;margin-bottom:6px}
-.day-h-date{text-align:left}.day-h-stat{text-align:center}
-.day-row-detail{display:grid;grid-template-columns:140px repeat(7,1fr);gap:4px;padding:8px 12px;border-radius:8px;margin-bottom:4px;background:${C.bgLight};align-items:center;font-size:12px}
-.day-stat-cell{text-align:center;color:${C.textSecondary};font-family:Consolas,monospace}
-.day-cost{font-weight:bold;color:${C.danger}}
-.day-official{font-weight:bold;color:${C.success}}
-.suggest{padding:14px 18px;border-radius:10px;display:flex;align-items:center;gap:10px}
-.suggest-green{background:linear-gradient(135deg,#e6f4ea,#ceead6);border:1px solid #a8dab5;color:#137333}
-.suggest-yellow{background:linear-gradient(135deg,#fef7e0,#feefc3);border:1px solid #fdd663;color:#7c6300}
-.suggest-red{background:linear-gradient(135deg,#fce8e6,#f8d7da);border:1px solid #f5b7b1;color:#a50e0e}
-.token-usage{background:linear-gradient(135deg,#667eea15,#764ba215);border:1px solid #667eea30;border-radius:10px;padding:16px;margin-bottom:16px;display:flex;justify-content:space-around;align-items:center}
-.token-item{text-align:center}.token-label{font-size:12px;color:${C.textSecondary};margin-bottom:4px}
-.token-value{font-size:18px;font-weight:bold;font-family:Consolas,monospace;color:#667eea}
-.token-raw{font-size:11px;color:${C.textSecondary};font-family:Consolas,monospace;margin-top:2px}
-.icon{display:inline-flex;vertical-align:middle}.icon svg{display:block}
+/* ═══════════════════════════════════════════════════════
+   报告页面样式系统
+   - CSS 变量便于维护
+   - 响应式设计支持 375px ~ 1440px+
+   - 交互反馈和平滑过渡
+   - WCAG AA 对比度达标
+   ═══════════════════════════════════════════════════════ */
+
+/* ── CSS 变量 ─────────────────────────────────────── */
+:root {
+  --color-text-primary: ${C.textPrimary};
+  --color-text-secondary: ${C.textSecondary};
+  --color-primary: ${C.primary};
+  --color-primary-light: ${C.primaryLight};
+  --color-primary-dark: ${C.primaryDark};
+  --color-success: ${C.success};
+  --color-warning: ${C.warning};
+  --color-danger: ${C.danger};
+  --color-bg-light: ${C.bgLight};
+  --color-bg-card: ${C.bgCard};
+  --color-border: ${C.borderLight};
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+
+/* ── 基础重置 ─────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf4 50%, #f0f4ff 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── 容器 ─────────────────────────────────────────── */
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ── 头部 ─────────────────────────────────────────── */
+.header {
+  background: ${C.gradientBlue};
+  border-radius: var(--radius-xl);
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  color: #fff;
+  box-shadow: var(--shadow-xl), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 头部装饰光效 */
+.header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.header-title {
+  font-size: 26px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: -0.5px;
+  position: relative;
+  z-index: 1;
+}
+
+.header-date {
+  font-size: 14px;
+  opacity: .9;
+  margin-top: 8px;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 卡片 ─────────────────────────────────────────── */
+.card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
+  transition: box-shadow var(--transition-normal), transform var(--transition-normal);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.card-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--color-bg-light);
+}
+
+/* ── 统计网格 ─────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(${statsCols}, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  padding: 20px 16px;
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 统计卡片装饰 */
+.stat-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.stat-card:hover::after {
+  opacity: 1;
+}
+
+.stat-card.blue {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1px solid #c7d2fe;
+}
+.stat-card.blue::after { background: var(--color-primary); }
+
+.stat-card.green {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #a7f3d0;
+}
+.stat-card.green::after { background: var(--color-success); }
+
+.stat-card.orange {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #fde68a;
+}
+.stat-card.orange::after { background: var(--color-warning); }
+
+.stat-card.purple {
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+  border: 1px solid #e9d5ff;
+}
+.stat-card.purple::after { background: #8b5cf6; }
+
+.stat-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: -0.5px;
+}
+
+.stat-card.blue .stat-value { color: var(--color-primary); }
+.stat-card.green .stat-value { color: var(--color-success); }
+.stat-card.orange .stat-value { color: var(--color-warning); }
+.stat-card.purple .stat-value { color: #7c3aed; }
+
+/* ── 图表区域 ─────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.chart-container {
+  position: relative;
+  height: 280px;
+  padding: 8px;
+}
+
+/* ── 模型卡片 ─────────────────────────────────────── */
+.model-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  margin-bottom: 14px;
+  border-left: 4px solid var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.model-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateX(4px);
+}
+
+.model-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.model-name {
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-cost {
+  font-weight: 700;
+  color: var(--color-danger);
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+
+.model-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.model-stat {
+  text-align: center;
+  padding: 10px 6px;
+  background: var(--color-bg-light);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.model-stat:hover {
+  background: #e2e8f0;
+}
+
+.model-stat-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.model-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* ── 每日明细 ─────────────────────────────────────── */
+.day-header {
+  display: grid;
+  grid-template-columns: 140px repeat(7, 1fr);
+  gap: 6px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.day-h-date { text-align: left; }
+.day-h-stat { text-align: center; }
+
+.day-row-detail {
+  display: grid;
+  grid-template-columns: 140px repeat(7, 1fr);
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  background: var(--color-bg-light);
+  align-items: center;
+  font-size: 13px;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.day-row-detail:hover {
+  background: #e2e8f0;
+  transform: scale(1.01);
+}
+
+.day-stat-cell {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.day-cost {
+  font-weight: 700;
+  color: var(--color-danger);
+}
+
+.day-official {
+  font-weight: 700;
+  color: var(--color-success);
+}
+
+/* ── 建议区域 ─────────────────────────────────────── */
+.suggest {
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  transition: transform var(--transition-fast);
+}
+
+.suggest:hover {
+  transform: translateX(4px);
+}
+
+.suggest-green {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.suggest-yellow {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #fcd34d;
+  color: #92400e;
+}
+
+.suggest-red {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+/* ── Token 使用情况 ───────────────────────────────── */
+.token-usage {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 50%, #eef2ff 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.token-item {
+  text-align: center;
+  transition: transform var(--transition-fast);
+}
+
+.token-item:hover {
+  transform: scale(1.05);
+}
+
+.token-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.token-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-primary);
+}
+
+.token-raw {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+/* ── 图标 ─────────────────────────────────────────── */
+.icon {
+  display: inline-flex;
+  vertical-align: middle;
+  transition: transform var(--transition-fast);
+}
+
+.icon svg {
+  display: block;
+}
+
+/* ── 响应式设计 ───────────────────────────────────── */
+
+/* 平板 (768px 以下) */
+@media (max-width: 768px) {
+  body {
+    padding: 16px;
+  }
+
+  .header {
+    padding: 20px 24px;
+    border-radius: var(--radius-lg);
+  }
+
+  .header-title {
+    font-size: 22px;
+  }
+
+  .card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .chart-container {
+    height: 220px;
+  }
+
+  .model-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .day-header,
+  .day-row-detail {
+    grid-template-columns: 120px repeat(4, 1fr);
+    font-size: 11px;
+    padding: 10px 12px;
+  }
+
+  /* 隐藏部分列在平板上 */
+  .day-h-stat:nth-child(6),
+  .day-stat-cell:nth-child(6) {
+    display: none;
+  }
+
+  .token-usage {
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .token-item {
+    flex: 1 1 45%;
+    min-width: 120px;
+  }
+}
+
+/* 手机 (480px 以下) */
+@media (max-width: 480px) {
+  body {
+    padding: 12px;
+  }
+
+  .header {
+    padding: 16px 20px;
+    border-radius: var(--radius-md);
+  }
+
+  .header-title {
+    font-size: 18px;
+    gap: 8px;
+  }
+
+  .header-date {
+    font-size: 12px;
+  }
+
+  .card {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .card-title {
+    font-size: 15px;
+    margin-bottom: 14px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 14px 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .chart-container {
+    height: 200px;
+  }
+
+  .model-card {
+    padding: 14px;
+  }
+
+  .model-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .model-stat {
+    padding: 8px 4px;
+  }
+
+  .day-header,
+  .day-row-detail {
+    grid-template-columns: 100px repeat(3, 1fr);
+    font-size: 10px;
+    padding: 8px 10px;
+    gap: 4px;
+  }
+
+  /* 隐藏更多列在手机上 */
+  .day-h-stat:nth-child(5),
+  .day-stat-cell:nth-child(5),
+  .day-h-stat:nth-child(6),
+  .day-stat-cell:nth-child(6) {
+    display: none;
+  }
+
+  .token-usage {
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .token-item {
+    width: 100%;
+  }
+
+  .token-value {
+    font-size: 18px;
+  }
+
+  .suggest {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+}
+
+/* 小手机 (375px 以下) */
+@media (max-width: 375px) {
+  body {
+    padding: 10px;
+  }
+
+  .header {
+    padding: 14px 16px;
+  }
+
+  .header-title {
+    font-size: 16px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .day-header,
+  .day-row-detail {
+    grid-template-columns: 90px repeat(3, 1fr);
+    font-size: 9px;
+    padding: 6px 8px;
+  }
+}
+
+/* 大屏幕优化 (1440px+) */
+@media (min-width: 1440px) {
+  .container {
+    max-width: 1100px;
+  }
+
+  .header {
+    padding: 32px 40px;
+  }
+
+  .header-title {
+    font-size: 28px;
+  }
+
+  .card {
+    padding: 28px;
+  }
+
+  .stats-grid {
+    gap: 20px;
+  }
+
+  .stat-card {
+    padding: 24px 20px;
+  }
+
+  .stat-value {
+    font-size: 26px;
+  }
+
+  .chart-container {
+    height: 320px;
+  }
+
+  .model-stats {
+    gap: 12px;
+  }
+
+  .day-header,
+  .day-row-detail {
+    padding: 14px 20px;
+  }
+}
+
+/* ── 打印优化 ─────────────────────────────────────── */
+@media print {
+  body {
+    background: white;
+    padding: 0;
+  }
+
+  .card,
+  .stat-card,
+  .model-card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+
+  .card:hover,
+  .stat-card:hover,
+  .model-card:hover {
+    transform: none;
+  }
+}
+
+/* ── 动画关键帧 ───────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.card {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.stat-card {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.stat-card:nth-child(1) { animation-delay: 0.05s; }
+.stat-card:nth-child(2) { animation-delay: 0.1s; }
+.stat-card:nth-child(3) { animation-delay: 0.15s; }
+.stat-card:nth-child(4) { animation-delay: 0.2s; }
+
+.model-card {
+  animation: slideIn 0.3s ease-out;
+}
 `
 }
 
@@ -251,7 +949,10 @@ function buildReportHeader(title, now) {
 function buildStatsGrid(cards) {
   let h = '<div class="stats-grid">'
   for (const c of cards) {
-    h += `<div class="stat-card ${c.color}"><div class="stat-label">${icon(c.icon)} ${esc(c.label)}</div><div class="stat-value">${c.value}</div></div>`
+    h += `<div class="stat-card ${c.color}">`
+    h += `<div class="stat-label">${icon(c.icon)} ${esc(c.label)}</div>`
+    h += `<div class="stat-value">${c.value}</div>`
+    h += `</div>`
   }
   return h + '</div>'
 }
@@ -265,7 +966,6 @@ function buildChartsSection() {
 function buildDayDetailRows(sortedDays, today, yesterday, opts = {}) {
   const wk = ['日', '一', '二', '三', '四', '五', '六']
   const showOfficial = !!opts.showOfficial
-  const colCount = showOfficial ? 9 : 8
 
   let h = `<div class="card"><div class="card-title">${icon('calendar')} 最近7天使用情况</div>`
   h += `<div class="day-header"><span class="day-h-date">日期</span>`
@@ -278,12 +978,17 @@ function buildDayDetailRows(sortedDays, today, yesterday, opts = {}) {
   if (showOfficial) h += `<span class="day-h-stat">${icon('money')} 官方计费</span>`
   h += `<span class="day-h-stat">${icon('money')} 费用</span></div>`
 
-  for (const [dt, inf] of sortedDays.slice().reverse()) {
+  const reversedDays = sortedDays.slice().reverse()
+  for (let idx = 0; idx < reversedDays.length; idx++) {
+    const [dt, inf] = reversedDays[idx]
     const isToday = dt === today, isYesterday = dt === yesterday
-    const dayLabel = isToday ? '今天' : isYesterday ? '昨天' : '周' + wk[new Date(dt).getDay()]
+    const dayLabel = isToday ? '📌 今天' : isYesterday ? '昨天' : '周' + wk[new Date(dt).getDay()]
     const dayTotal = inf.cacheHit + inf.cacheMiss + inf.output
     const rate = dayTotal > 0 ? ((inf.cacheHit / dayTotal) * 100) : 0
-    h += `<div class="day-row-detail"><div class="day-date">${icon('calendar')} ${dt.slice(5)} (${dayLabel})</div>`
+    const isHighlight = isToday || isYesterday
+    const rowStyle = isHighlight ? 'background:linear-gradient(90deg,#eef2ff,#f8fafc);font-weight:500' : ''
+    h += `<div class="day-row-detail" style="${rowStyle}">`
+    h += `<div class="day-date" style="font-weight:${isHighlight ? '600' : '400'}">${icon('calendar')} ${dt.slice(5)} (${dayLabel})</div>`
     h += `<div class="day-stat-cell">${fmtM(inf.total)}M</div>`
     h += `<div class="day-stat-cell">${fmtM(inf.cacheHit)}M</div>`
     h += `<div class="day-stat-cell">${fmtM(inf.cacheMiss)}M</div>`
@@ -297,7 +1002,8 @@ function buildDayDetailRows(sortedDays, today, yesterday, opts = {}) {
 }
 
 function buildModelDetailCards(modelEntries, opts = {}) {
-  const modelColors = ['#4285f4', '#34a853', '#fbbc04', '#ea4335', '#9c27b0', '#009688', '#ff9800', '#e91e63']
+  // 优化后的模型卡片配色，与设计系统一致
+  const modelColors = ['#6366f1', '#059669', '#d97706', '#dc2626', '#8b5cf6', '#0891b2', '#ea580c', '#db2777']
   const showOfficial = !!opts.showOfficial
 
   let h = `<div class="card"><div class="card-title">${icon('robot')} 各模型本月汇总</div>`
@@ -305,48 +1011,57 @@ function buildModelDetailCards(modelEntries, opts = {}) {
     const [modelName, s] = modelEntries[i]
     const totalTokens = s.cacheHit + s.cacheMiss + s.output
     const rate = totalTokens > 0 ? ((s.cacheHit / totalTokens) * 100) : 0
-    h += `<div class="model-card" style="border-left-color:${modelColors[i % modelColors.length]}">`
-    h += `<div class="model-header"><div class="model-name">${icon('robot')} ${esc(modelName)}</div>`
-    h += `<div>`
-    if (showOfficial) h += `<span class="model-cost" style="color:${COLORS.success};margin-right:8px">¥${s.official.toFixed(4)}</span>`
+    const borderColor = modelColors[i % modelColors.length]
+    h += `<div class="model-card" style="border-left-color:${borderColor}">`
+    h += `<div class="model-header"><div class="model-name" style="color:${borderColor}">${icon('robot')} ${esc(modelName)}</div>`
+    h += `<div style="display:flex;align-items:center;gap:8px">`
+    if (showOfficial) h += `<span class="model-cost" style="color:${COLORS.success};font-size:13px">官方: ¥${s.official.toFixed(4)}</span>`
     h += `<span class="model-cost">¥${s.cost.toFixed(4)}</span></div></div>`
     h += '<div class="model-stats">'
     h += `<div class="model-stat"><div class="model-stat-label">${icon('cache')} 命中缓存</div><div class="model-stat-value">${fmtM(s.cacheHit)}M</div></div>`
     h += `<div class="model-stat"><div class="model-stat-label">${icon('miss')} 未命中</div><div class="model-stat-value">${fmtM(s.cacheMiss)}M</div></div>`
     h += `<div class="model-stat"><div class="model-stat-label">${icon('output')} 输出</div><div class="model-stat-value">${fmtM(s.output)}M</div></div>`
     h += `<div class="model-stat"><div class="model-stat-label">${icon('request')} 请求</div><div class="model-stat-value">${s.requests} 次</div></div></div>`
-    h += `<div style="margin-top:8px;font-size:12px;color:${COLORS.textSecondary};display:flex;align-items:center;gap:4px">${icon('target')} 缓存命中率: <strong style="color:${hitRateColor(rate)}">${rate.toFixed(1)}%</strong></div></div>`
+    h += `<div style="margin-top:12px;font-size:13px;color:${COLORS.textSecondary};display:flex;align-items:center;gap:6px;padding-top:10px;border-top:1px solid var(--color-border)">${icon('target')} 缓存命中率: <strong style="color:${hitRateColor(rate)};font-size:14px">${rate.toFixed(1)}%</strong></div></div>`
   }
   return h + '</div>'
 }
 
 function buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost, extraDatasets) {
-  const modelColors = ['#4285f4', '#34a853', '#fbbc04', '#ea4335', '#9c27b0', '#009688', '#ff9800', '#e91e63']
+  // 优化后的图表配色，与整体设计系统协调
+  const modelColors = ['#6366f1', '#059669', '#d97706', '#dc2626', '#8b5cf6', '#0891b2', '#ea580c', '#db2777']
   const lineDatasets = [
-    `{label:"每日费用 (¥)",data:${JSON.stringify(chartCosts)},borderColor:"#667eea",backgroundColor:"rgba(102,126,234,.1)",borderWidth:3,fill:true,tension:.4,pointBackgroundColor:"#667eea",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:5}`,
+    `{label:"每日费用 (¥)",data:${JSON.stringify(chartCosts)},borderColor:"#6366f1",backgroundColor:"rgba(99,102,241,.1)",borderWidth:3,fill:true,tension:.4,pointBackgroundColor:"#6366f1",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}`,
   ]
   if (chartRequests) {
-    lineDatasets.push(`{label:"请求次数",data:${JSON.stringify(chartRequests)},borderColor:"#34a853",backgroundColor:"rgba(52,168,83,.1)",borderWidth:2,fill:false,tension:.4,pointBackgroundColor:"#34a853",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:4,yAxisID:"y1"}`)
+    lineDatasets.push(`{label:"请求次数",data:${JSON.stringify(chartRequests)},borderColor:"#059669",backgroundColor:"rgba(5,150,105,.1)",borderWidth:2,fill:false,tension:.4,pointBackgroundColor:"#059669",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:4,pointHoverRadius:6,yAxisID:"y1"}`)
   }
   if (extraDatasets) {
     lineDatasets.push(...extraDatasets)
   }
 
   const yScales = chartRequests
-    ? `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)"}},y1:{position:"right",beginAtZero:true,title:{display:true,text:"请求次数"},grid:{drawOnChartArea:false}}`
-    : `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)"}}`
+    ? `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}},y1:{position:"right",beginAtZero:true,title:{display:true,text:"请求次数",font:{size:12,weight:'bold'}},grid:{drawOnChartArea:false}}`
+    : `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}}`
 
   let s = '<script>document.addEventListener("DOMContentLoaded",function(){'
-  s += `new Chart(document.getElementById("lineChart"),{type:"line",data:{labels:${JSON.stringify(chartLabels)},datasets:[${lineDatasets.join(',')}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top",labels:{usePointStyle:true,padding:15}}},scales:{${yScales}}}});`
-  s += `new Chart(document.getElementById("pieChart"),{type:"doughnut",data:{labels:${JSON.stringify(modelNames)},datasets:[{data:${JSON.stringify(modelCosts)},backgroundColor:${JSON.stringify(modelColors.slice(0, modelNames.length))},borderWidth:3,borderColor:"#fff",hoverOffset:10}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:12,font:{size:11}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+": ¥"+ctx.parsed+" ("+((ctx.parsed/${totalCost})*100).toFixed(1)+"%)"}}}}}});`
+  // 折线图配置
+  s += `new Chart(document.getElementById("lineChart"),{type:"line",data:{labels:${JSON.stringify(chartLabels)},datasets:[${lineDatasets.join(',')}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:"top",labels:{usePointStyle:true,padding:16,font:{size:12}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,displayColors:true}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},${yScales}}}});`
+  // 饼图配置
+  s += `new Chart(document.getElementById("pieChart"),{type:"doughnut",data:{labels:${JSON.stringify(modelNames)},datasets:[{data:${JSON.stringify(modelCosts)},backgroundColor:${JSON.stringify(modelColors.slice(0, modelNames.length))},borderWidth:3,borderColor:"#fff",hoverOffset:12,hoverBorderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:14,font:{size:11}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,callbacks:{label:function(ctx){return ctx.label+": ¥"+ctx.parsed+" ("+((ctx.parsed/${totalCost})*100).toFixed(1)+"%)"}}}}}});`
   s += '});</script>'
   return s
 }
 
 function wrapReport(css, bodyHtml, scriptHtml) {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">`
+  return `<!DOCTYPE html><html lang="zh-CN"><head>`
+    + `<meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">`
+    + `<title>用量报告</title>`
     + `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>`
-    + `<style>${css}</style></head><body><div class="container">`
+    + `<style>${css}</style>`
+    + `</head><body>`
+    + `<div class="container">`
     + bodyHtml
     + `</div>${scriptHtml}</body></html>`
 }
@@ -760,13 +1475,7 @@ async function runDeepseekReport() {
     const tokenRes = await httpsGet('platform.deepseek.com', '/api/v0/usage/amount?month=' + mo + '&year=' + y, dsHeaders)
     if (tokenRes.code !== 0) throw new Error('Token API 错误: ' + JSON.stringify(tokenRes))
 
-    let amountRes
-    try {
-      amountRes = await httpsGet('platform.deepseek.com', '/api/v0/usage/cost?month=' + mo + '&year=' + y, dsHeaders)
-    } catch {}
-
     let data = parseDsTokenData(tokenRes)
-    let amountData = amountRes && amountRes.code === 0 ? parseDsAmountData(amountRes) : []
 
     // 上月
     const prevMo = mo === 1 ? 12 : mo - 1, prevY = mo === 1 ? y - 1 : y
@@ -774,31 +1483,13 @@ async function runDeepseekReport() {
       const prevToken = await httpsGet('platform.deepseek.com', '/api/v0/usage/amount?month=' + prevMo + '&year=' + prevY, dsHeaders)
       if (prevToken.code === 0) data = parseDsTokenData(prevToken).concat(data)
     } catch {}
-    try {
-      const prevAmount = await httpsGet('platform.deepseek.com', '/api/v0/usage/cost?month=' + prevMo + '&year=' + prevY, dsHeaders)
-      if (prevAmount.code === 0) amountData = parseDsAmountData(prevAmount).concat(amountData)
-    } catch {}
 
     const { dailyData, modelData, totalCost } = aggregateDailyAndModel(
       data.filter(r => r.date <= today), monthStr,
       r => calcCost(PRICES, r.model, r.cacheHit, r.cacheMiss, r.output)
     )
 
-    // 合并官方计费数据
-    let totalOfficial = 0
-    for (const r of amountData) {
-      if (r.date > today) continue
-      if (!dailyData[r.date]) dailyData[r.date] = { cost: 0, requests: 0, total: 0, official: 0, cacheHit: 0, cacheMiss: 0, output: 0 }
-      dailyData[r.date].official += r.total
-      if (r.date.slice(0, 7) === monthStr) {
-        totalOfficial += r.total
-        if (!modelData[r.model]) modelData[r.model] = { cacheHit: 0, cacheMiss: 0, output: 0, requests: 0, cost: 0, official: 0 }
-        modelData[r.model].official += r.total
-      }
-    }
-
     const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
-    const chartOfficial = sortedDays.map(d => +d[1].official.toFixed(4))
 
     const daysPassed = now.getDate() || 1
     const dailyAvg = totalCost / daysPassed
@@ -812,8 +1503,8 @@ async function runDeepseekReport() {
       { color: 'purple', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
     ])
     body += buildChartsSection()
-    body += buildDayDetailRows(sortedDays, today, yesterday, { showOfficial: true })
-    body += buildModelDetailCards(modelEntries, { showOfficial: true })
+    body += buildDayDetailRows(sortedDays, today, yesterday)
+    body += buildModelDetailCards(modelEntries)
 
     const script = buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost)
     const html = wrapReport(buildReportCss(4), body, script)
