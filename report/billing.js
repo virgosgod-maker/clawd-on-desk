@@ -939,6 +939,150 @@ body {
 .model-card {
   animation: slideIn 0.3s ease-out;
 }
+
+/* ── 顶部摘要条 ───────────────────────────────────── */
+.summary-bar {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf4 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-lg);
+  padding: 16px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-sm);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.summary-bar .summary-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.summary-bar .summary-text {
+  flex: 1;
+  line-height: 1.6;
+}
+
+.summary-bar .summary-text strong {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* ── 洞察指标卡片 ─────────────────────────────────── */
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.insight-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  text-align: center;
+  transition: all var(--transition-fast);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.insight-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.insight-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.insight-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.insight-trend {
+  font-size: 11px;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.insight-trend.up { color: var(--color-danger); }
+.insight-trend.down { color: var(--color-success); }
+.insight-trend.neutral { color: var(--color-text-secondary); }
+
+/* ── 模型费用占比条 ───────────────────────────────── */
+.model-bar-wrapper {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.model-bar-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.model-bar-track {
+  height: 6px;
+  background: var(--color-bg-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.model-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--transition-slow);
+}
+
+/* ── 响应式适配 ───────────────────────────────────── */
+@media (max-width: 768px) {
+  .summary-bar {
+    flex-direction: column;
+    text-align: center;
+    padding: 14px 16px;
+  }
+
+  .insight-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-bar {
+    font-size: 13px;
+    padding: 12px 14px;
+  }
+
+  .insight-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .insight-card {
+    padding: 10px 12px;
+  }
+
+  .insight-value {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 375px) {
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+}
 `
 }
 
@@ -955,6 +1099,91 @@ function buildStatsGrid(cards) {
     h += `</div>`
   }
   return h + '</div>'
+}
+
+function buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate) {
+  const hitColor = hitRate >= 95 ? COLORS.success : hitRate < 80 ? COLORS.danger : COLORS.warning
+  return `<div class="summary-bar">
+    <div class="summary-icon">📊</div>
+    <div class="summary-text">
+      本月已花费 <strong>¥${totalCost.toFixed(2)}</strong>，
+      日均 <strong>¥${dailyAvg.toFixed(2)}</strong>，
+      缓存命中率 <strong style="color:${hitColor}">${hitRate.toFixed(1)}%</strong>，
+      预计全月 <strong>¥${monthlyEstimate.toFixed(2)}</strong>
+    </div>
+  </div>`
+}
+
+function buildInsightCards(dailyData, totalCost, totalRequests) {
+  // 计算周环比（使用完整的 dailyData）
+  const today = new Date()
+  const getDateStr = (daysAgo) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() - daysAgo)
+    return d.toISOString().slice(0, 10)
+  }
+
+  // 本周和上周的日期范围
+  let thisWeekCost = 0, lastWeekCost = 0
+  for (let i = 0; i < 7; i++) {
+    const todayStr = getDateStr(i)
+    const lastWeekStr = getDateStr(i + 7)
+    thisWeekCost += (dailyData[todayStr]?.cost || 0)
+    lastWeekCost += (dailyData[lastWeekStr]?.cost || 0)
+  }
+  const weekChange = lastWeekCost > 0 ? ((thisWeekCost - lastWeekCost) / lastWeekCost * 100) : 0
+  const weekTrend = weekChange > 5 ? 'up' : weekChange < -5 ? 'down' : 'neutral'
+  const weekIcon = weekChange > 0 ? '↑' : weekChange < 0 ? '↓' : '→'
+
+  // 平均请求成本
+  const avgCost = totalRequests > 0 ? (totalCost / totalRequests) : 0
+
+  // 缓存命中率（最近7天）
+  let totalHit = 0, totalMiss = 0
+  for (let i = 0; i < 7; i++) {
+    const dt = getDateStr(i)
+    const day = dailyData[dt]
+    if (day) {
+      totalHit += day.cacheHit
+      totalMiss += day.cacheMiss
+    }
+  }
+  const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
+
+  // 峰值日（最近7天）
+  let peakDay = ''
+  let peakCost = 0
+  for (let i = 0; i < 7; i++) {
+    const dt = getDateStr(i)
+    const day = dailyData[dt]
+    if (day && day.cost > peakCost) {
+      peakCost = day.cost
+      peakDay = dt.slice(5)
+    }
+  }
+
+  return `<div class="insight-grid">
+    <div class="insight-card">
+      <div class="insight-label">${icon('trend')} 周环比</div>
+      <div class="insight-value" style="color:${weekTrend === 'up' ? COLORS.danger : weekTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekIcon} ${Math.abs(weekChange).toFixed(1)}%</div>
+      <div class="insight-trend ${weekTrend}">${weekTrend === 'up' ? '费用上升' : weekTrend === 'down' ? '费用下降' : '基本持平'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('request')} 均请求成本</div>
+      <div class="insight-value" style="color:var(--color-primary)">¥${avgCost.toFixed(4)}</div>
+      <div class="insight-trend neutral">每次请求</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('cache')} 缓存命中率</div>
+      <div class="insight-value" style="color:${hitRate >= 95 ? COLORS.success : hitRate < 80 ? COLORS.danger : COLORS.warning}">${hitRate.toFixed(1)}%</div>
+      <div class="insight-trend ${hitRate >= 95 ? 'down' : hitRate < 80 ? 'up' : 'neutral'}">${hitRate >= 95 ? '优秀' : hitRate < 80 ? '需优化' : '正常'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('chart')} 峰值日</div>
+      <div class="insight-value" style="color:var(--color-warning)">${peakDay || '-'}</div>
+      <div class="insight-trend neutral">¥${peakCost.toFixed(2)}</div>
+    </div>
+  </div>`
 }
 
 function buildChartsSection() {
@@ -1300,10 +1529,17 @@ async function runMimoReport() {
     const daysPassed = now.getDate() || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
+    const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+    const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+    const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+    const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
 
     // 构建 HTML
     const percentColor = tokenUsage.percent >= 80 ? COLORS.danger : tokenUsage.percent >= 50 ? COLORS.warning : COLORS.success
     let body = buildReportHeader('小米 MiMo 用量报告', now)
+
+    // 顶部摘要条
+    body += buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate)
 
     // 积分使用情况
     body += '<div class="token-usage">'
@@ -1316,6 +1552,9 @@ async function runMimoReport() {
       { color: 'green', icon: 'chart', label: '日均费用', value: '¥' + dailyAvg.toFixed(2) },
       { color: 'orange', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
     ])
+
+    // 洞察指标
+    body += buildInsightCards(dailyData, totalCost, totalRequests)
 
     body += buildChartsSection()
     body += buildDayDetailRows(sortedDays, today, yesterday)
@@ -1401,14 +1640,20 @@ async function runMimoPaygReport() {
     const daysPassed = now.getDate() || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
+    const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+    const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+    const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+    const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
 
     let body = buildReportHeader('小米 MiMo 按量计费报告', now)
+    body += buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate)
     body += buildStatsGrid([
       { color: 'purple', icon: 'money', label: '账户余额', value: '¥' + balance.toFixed(2) },
       { color: 'blue', icon: 'money', label: '本月总费用', value: '¥' + totalCost.toFixed(2) },
       { color: 'green', icon: 'chart', label: '日均费用', value: '¥' + dailyAvg.toFixed(2) },
       { color: 'orange', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
     ])
+    body += buildInsightCards(dailyData, totalCost, totalRequests)
     body += buildChartsSection()
     body += buildDayDetailRows(sortedDays, today, yesterday)
     body += buildModelDetailCards(modelEntries)
@@ -1494,14 +1739,20 @@ async function runDeepseekReport() {
     const daysPassed = now.getDate() || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
+    const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+    const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+    const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+    const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
 
     let body = buildReportHeader('DeepSeek 用量报告', now)
+    body += buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate)
     body += buildStatsGrid([
       { color: 'blue', icon: 'money', label: '账户余额', value: '¥' + parseFloat(balance).toString() },
       { color: 'green', icon: 'money', label: '本月总费用', value: '¥' + totalCost.toFixed(2) },
       { color: 'orange', icon: 'chart', label: '日均费用', value: '¥' + dailyAvg.toFixed(2) },
       { color: 'purple', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
     ])
+    body += buildInsightCards(dailyData, totalCost, totalRequests)
     body += buildChartsSection()
     body += buildDayDetailRows(sortedDays, today, yesterday)
     body += buildModelDetailCards(modelEntries)
