@@ -1083,6 +1083,139 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Tab 切换样式 ─────────────────────────────────── */
+.tab-container {
+  display: flex;
+  gap: 4px;
+  background: var(--color-bg-light);
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 24px;
+  border: 1px solid var(--color-border);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  transition: all var(--transition-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--color-text-primary);
+}
+
+.tab-btn.active {
+  background: var(--color-bg-card);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.tab-btn .tab-icon {
+  font-size: 16px;
+}
+
+.tab-content {
+  display: none;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Tab 内的错误提示 */
+.tab-error {
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-lg);
+  padding: 40px 24px;
+  text-align: center;
+  color: #991b1b;
+}
+
+.tab-error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.tab-error-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.tab-error-detail {
+  font-size: 14px;
+  color: #b91c1c;
+  margin-bottom: 20px;
+}
+
+.tab-error-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--transition-fast);
+}
+
+.tab-error-btn:hover {
+  background: #b91c1c;
+}
+
+/* 加载状态 */
+.tab-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  color: var(--color-text-secondary);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .tab-container {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tab-btn {
+    padding: 10px 16px;
+  }
+}
 `
 }
 
@@ -1186,10 +1319,13 @@ function buildInsightCards(dailyData, totalCost, totalRequests) {
   </div>`
 }
 
-function buildChartsSection() {
+function buildChartsSection(prefix) {
+  // prefix 用于区分不同 Tab 的 canvas ID
+  const lineId = prefix ? `${prefix}-lineChart` : 'lineChart'
+  const pieId = prefix ? `${prefix}-pieChart` : 'pieChart'
   return `<div class="charts-grid">
-<div class="card"><div class="card-title">${icon('chart')} 每日费用趋势</div><div class="chart-container"><canvas id="lineChart"></canvas></div></div>
-<div class="card"><div class="card-title">${icon('pie')} 模型费用占比</div><div class="chart-container"><canvas id="pieChart"></canvas></div></div></div>`
+<div class="card"><div class="card-title">${icon('chart')} 每日费用趋势</div><div class="chart-container"><canvas id="${lineId}"></canvas></div></div>
+<div class="card"><div class="card-title">${icon('pie')} 模型费用占比</div><div class="chart-container"><canvas id="${pieId}"></canvas></div></div></div>`
 }
 
 function buildDayDetailRows(sortedDays, today, yesterday, opts = {}) {
@@ -1256,7 +1392,103 @@ function buildModelDetailCards(modelEntries, opts = {}) {
   return h + '</div>'
 }
 
-function buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost, extraDatasets) {
+// ── 积分版本的图表和明细（MiMo 套餐专用）──────────────
+
+function buildChartsSectionForToken(prefix) {
+  const lineId = prefix ? `${prefix}-lineChart` : 'lineChart'
+  const pieId = prefix ? `${prefix}-pieChart` : 'pieChart'
+  return `<div class="charts-grid">
+<div class="card"><div class="card-title">${icon('chart')} 每日积分趋势</div><div class="chart-container"><canvas id="${lineId}"></canvas></div></div>
+<div class="card"><div class="card-title">${icon('pie')} 模型积分占比</div><div class="chart-container"><canvas id="${pieId}"></canvas></div></div></div>`
+}
+
+function buildDayDetailRowsForToken(sortedDays, today, yesterday, credits) {
+  const wk = ['日', '一', '二', '三', '四', '五', '六']
+
+  let h = `<div class="card"><div class="card-title">${icon('calendar')} 最近7天使用情况</div>`
+  h += `<div class="day-header"><span class="day-h-date">日期</span>`
+  h += `<span class="day-h-stat">${icon('token')} 总Token</span>`
+  h += `<span class="day-h-stat">${icon('cache')} 命中缓存</span>`
+  h += `<span class="day-h-stat">${icon('miss')} 未命中</span>`
+  h += `<span class="day-h-stat">${icon('output')} 输出</span>`
+  h += `<span class="day-h-stat">${icon('target')} 命中率</span>`
+  h += `<span class="day-h-stat">${icon('request')} 请求</span>`
+  h += `<span class="day-h-stat">${icon('token')} 积分消耗</span></div>`
+
+  const reversedDays = sortedDays.slice().reverse()
+  for (let idx = 0; idx < reversedDays.length; idx++) {
+    const [dt, inf] = reversedDays[idx]
+    const isToday = dt === today, isYesterday = dt === yesterday
+    const dayLabel = isToday ? '📌 今天' : isYesterday ? '昨天' : '周' + wk[new Date(dt).getDay()]
+    const dayTotal = inf.cacheHit + inf.cacheMiss + inf.output
+    const rate = dayTotal > 0 ? ((inf.cacheHit / dayTotal) * 100) : 0
+    const isHighlight = isToday || isYesterday
+    const rowStyle = isHighlight ? 'background:linear-gradient(90deg,#eef2ff,#f8fafc);font-weight:500' : ''
+    h += `<div class="day-row-detail" style="${rowStyle}">`
+    h += `<div class="day-date" style="font-weight:${isHighlight ? '600' : '400'}">${icon('calendar')} ${dt.slice(5)} (${dayLabel})</div>`
+    h += `<div class="day-stat-cell">${fmtM(inf.total)}M</div>`
+    h += `<div class="day-stat-cell">${fmtM(inf.cacheHit)}M</div>`
+    h += `<div class="day-stat-cell">${fmtM(inf.cacheMiss)}M</div>`
+    h += `<div class="day-stat-cell">${fmtM(inf.output)}M</div>`
+    h += `<div class="day-stat-cell"><strong style="color:${hitRateColor(rate)}">${rate.toFixed(1)}%</strong></div>`
+    h += `<div class="day-stat-cell">${inf.requests} 次</div>`
+    const dc = credits ? (credits[inf.model] || credits['mimo-v2.5']) : null
+    const dayCredits = dc ? (inf.cacheHit * dc.cacheHit + inf.cacheMiss * dc.cacheMiss + inf.output * dc.output) : inf.total
+    h += `<div class="day-stat-cell" style="font-weight:bold;color:var(--color-primary)">${fmtM(dayCredits)}M</div></div>`
+  }
+  return h + '</div>'
+}
+
+function buildModelDetailCardsForToken(modelEntries) {
+  const modelColors = ['#6366f1', '#059669', '#d97706', '#dc2626', '#8b5cf6', '#0891b2', '#ea580c', '#db2777']
+
+  let h = `<div class="card"><div class="card-title">${icon('robot')} 各模型本月汇总</div>`
+  for (let i = 0; i < modelEntries.length; i++) {
+    const [modelName, s] = modelEntries[i]
+    const totalTokens = s.cacheHit + s.cacheMiss + s.output
+    const rate = totalTokens > 0 ? ((s.cacheHit / totalTokens) * 100) : 0
+    const borderColor = modelColors[i % modelColors.length]
+    h += `<div class="model-card" style="border-left-color:${borderColor}">`
+    h += `<div class="model-header"><div class="model-name" style="color:${borderColor}">${icon('robot')} ${esc(modelName)}</div>`
+    h += `<div style="display:flex;align-items:center;gap:8px">`
+    h += `<span class="model-cost" style="color:var(--color-primary)">${fmtM(totalTokens)}M</span></div></div>`
+    h += '<div class="model-stats">'
+    h += `<div class="model-stat"><div class="model-stat-label">${icon('cache')} 命中缓存</div><div class="model-stat-value">${fmtM(s.cacheHit)}M</div></div>`
+    h += `<div class="model-stat"><div class="model-stat-label">${icon('miss')} 未命中</div><div class="model-stat-value">${fmtM(s.cacheMiss)}M</div></div>`
+    h += `<div class="model-stat"><div class="model-stat-label">${icon('output')} 输出</div><div class="model-stat-value">${fmtM(s.output)}M</div></div>`
+    h += `<div class="model-stat"><div class="model-stat-label">${icon('request')} 请求</div><div class="model-stat-value">${s.requests} 次</div></div></div>`
+    h += `<div style="margin-top:12px;font-size:13px;color:${COLORS.textSecondary};display:flex;align-items:center;gap:6px;padding-top:10px;border-top:1px solid var(--color-border)">${icon('target')} 缓存命中率: <strong style="color:${hitRateColor(rate)};font-size:14px">${rate.toFixed(1)}%</strong></div></div>`
+  }
+  return h + '</div>'
+}
+
+function buildChartScriptForToken(chartLabels, chartTokens, chartRequests, modelNames, modelTokens, totalTokens, prefix) {
+  const lineId = prefix ? `${prefix}-lineChart` : 'lineChart'
+  const pieId = prefix ? `${prefix}-pieChart` : 'pieChart'
+
+  const modelColors = ['#6366f1', '#059669', '#d97706', '#dc2626', '#8b5cf6', '#0891b2', '#ea580c', '#db2777']
+  const lineDatasets = [
+    `{label:"每日积分消耗 (M)",data:${JSON.stringify(chartTokens)},borderColor:"#6366f1",backgroundColor:"rgba(99,102,241,.1)",borderWidth:3,fill:true,tension:.4,pointBackgroundColor:"#6366f1",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:5,pointHoverRadius:7}`,
+  ]
+  if (chartRequests) {
+    lineDatasets.push(`{label:"请求次数",data:${JSON.stringify(chartRequests)},borderColor:"#059669",backgroundColor:"rgba(5,150,105,.1)",borderWidth:2,fill:false,tension:.4,pointBackgroundColor:"#059669",pointBorderColor:"#fff",pointBorderWidth:2,pointRadius:4,pointHoverRadius:6,yAxisID:"y1"}`)
+  }
+
+  const yScales = chartRequests
+    ? `y:{beginAtZero:true,title:{display:true,text:"积分 (M)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}},y1:{position:"right",beginAtZero:true,title:{display:true,text:"请求次数",font:{size:12,weight:'bold'}},grid:{drawOnChartArea:false}}`
+    : `y:{beginAtZero:true,title:{display:true,text:"积分 (M)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}}`
+
+  let s = ''
+  s += `new Chart(document.getElementById("${lineId}"),{type:"line",data:{labels:${JSON.stringify(chartLabels)},datasets:[${lineDatasets.join(',')}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:"top",labels:{usePointStyle:true,padding:16,font:{size:12}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,displayColors:true}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},${yScales}}}});`
+  s += `new Chart(document.getElementById("${pieId}"),{type:"doughnut",data:{labels:${JSON.stringify(modelNames)},datasets:[{data:${JSON.stringify(modelTokens)},backgroundColor:${JSON.stringify(modelColors.slice(0, modelNames.length))},borderWidth:3,borderColor:"#fff",hoverOffset:12,hoverBorderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:14,font:{size:11}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,callbacks:{label:function(ctx){return ctx.label+": "+ctx.parsed+"M ("+((ctx.parsed/${totalTokens})*100).toFixed(1)+"%)"}}}}}});`
+  return s
+}
+
+function buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost, extraDatasets, prefix) {
+  // prefix 用于区分不同 Tab 的 canvas ID
+  const lineId = prefix ? `${prefix}-lineChart` : 'lineChart'
+  const pieId = prefix ? `${prefix}-pieChart` : 'pieChart'
+
   // 优化后的图表配色，与整体设计系统协调
   const modelColors = ['#6366f1', '#059669', '#d97706', '#dc2626', '#8b5cf6', '#0891b2', '#ea580c', '#db2777']
   const lineDatasets = [
@@ -1273,12 +1505,12 @@ function buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, mo
     ? `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}},y1:{position:"right",beginAtZero:true,title:{display:true,text:"请求次数",font:{size:12,weight:'bold'}},grid:{drawOnChartArea:false}}`
     : `y:{beginAtZero:true,title:{display:true,text:"费用 (¥)",font:{size:12,weight:'bold'}},grid:{color:'rgba(0,0,0,.06)'}}`
 
-  let s = '<script>document.addEventListener("DOMContentLoaded",function(){'
+  // 返回纯函数体（不包含 script 标签），由调用方决定如何包装
+  let s = ''
   // 折线图配置
-  s += `new Chart(document.getElementById("lineChart"),{type:"line",data:{labels:${JSON.stringify(chartLabels)},datasets:[${lineDatasets.join(',')}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:"top",labels:{usePointStyle:true,padding:16,font:{size:12}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,displayColors:true}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},${yScales}}}});`
+  s += `new Chart(document.getElementById("${lineId}"),{type:"line",data:{labels:${JSON.stringify(chartLabels)},datasets:[${lineDatasets.join(',')}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:"top",labels:{usePointStyle:true,padding:16,font:{size:12}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,displayColors:true}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},${yScales}}}});`
   // 饼图配置
-  s += `new Chart(document.getElementById("pieChart"),{type:"doughnut",data:{labels:${JSON.stringify(modelNames)},datasets:[{data:${JSON.stringify(modelCosts)},backgroundColor:${JSON.stringify(modelColors.slice(0, modelNames.length))},borderWidth:3,borderColor:"#fff",hoverOffset:12,hoverBorderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:14,font:{size:11}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,callbacks:{label:function(ctx){return ctx.label+": ¥"+ctx.parsed+" ("+((ctx.parsed/${totalCost})*100).toFixed(1)+"%)"}}}}}});`
-  s += '});</script>'
+  s += `new Chart(document.getElementById("${pieId}"),{type:"doughnut",data:{labels:${JSON.stringify(modelNames)},datasets:[{data:${JSON.stringify(modelCosts)},backgroundColor:${JSON.stringify(modelColors.slice(0, modelNames.length))},borderWidth:3,borderColor:"#fff",hoverOffset:12,hoverBorderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:14,font:{size:11}}},tooltip:{backgroundColor:'rgba(26,26,46,.9)',titleFont:{size:13},bodyFont:{size:12},padding:12,cornerRadius:8,callbacks:{label:function(ctx){return ctx.label+": ¥"+ctx.parsed+" ("+((ctx.parsed/${totalCost})*100).toFixed(1)+"%)"}}}}}});`
   return s
 }
 
@@ -1295,52 +1527,573 @@ function wrapReport(css, bodyHtml, scriptHtml) {
     + `</div>${scriptHtml}</body></html>`
 }
 
+// ── 加载占位符 ──────────────────────────────────────
+
+function buildLoadingPlaceholder() {
+  return `<div class="tab-loading">
+    <div class="loading-spinner"></div>
+    <div>点击加载数据...</div>
+  </div>`
+}
+
+function wrapUnifiedReport(css, tabs, firstTabScript) {
+  // tabs: [{id, label, icon, content}]
+  const tabButtons = tabs.map((tab, i) =>
+    `<button class="tab-btn ${i === 0 ? 'active' : ''}" onclick="switchTab('${tab.id}', this)">
+      <span class="tab-icon">${tab.icon}</span>
+      ${tab.label}
+    </button>`
+  ).join('')
+
+  const tabContents = tabs.map((tab, i) =>
+    `<div id="tab-${tab.id}" class="tab-content ${i === 0 ? 'active' : ''}">${tab.content}</div>`
+  ).join('')
+
+  const switchTabScript = `
+    // 已加载的 tab 集合
+    const loadedTabs = new Set(['${tabs[0].id}']);
+
+    function switchTab(tabId, btn) {
+      // 隐藏所有 tab 内容
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'))
+      // 移除所有 tab 激活状态
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'))
+      // 显示目标 tab
+      document.getElementById('tab-' + tabId).classList.add('active')
+      // 激活对应按钮
+      btn.classList.add('active')
+
+      // 懒加载：首次切换时通过 IPC 请求数据
+      if (!loadedTabs.has(tabId)) {
+        loadTabData(tabId);
+      } else {
+        window.dispatchEvent(new Event('resize'));
+      }
+    }
+
+    function loadTabData(tabId) {
+      const container = document.getElementById('tab-' + tabId);
+      container.innerHTML = '<div class="tab-loading"><div class="loading-spinner"></div><div>加载中...</div></div>';
+
+      if (window.reportAPI && window.reportAPI.loadTab) {
+        window.reportAPI.loadTab(tabId).then(function(result) {
+          if (result.error) {
+            container.innerHTML = buildErrorHtml(result.error, result.detail);
+          } else {
+            container.innerHTML = result.content;
+            loadedTabs.add(tabId);
+            // 执行图表初始化脚本
+            if (result.script) {
+              try { new Function(result.script)(); } catch(e) { console.error('Chart script error:', e); }
+            }
+          }
+        }).catch(function(err) {
+          container.innerHTML = buildErrorHtml('加载失败', err.message || '未知错误');
+        });
+      } else {
+        container.innerHTML = buildErrorHtml('API 不可用', 'preload 脚本未正确加载');
+      }
+    }
+
+    function buildErrorHtml(error, detail) {
+      return '<div class="tab-error">'
+        + '<div class="tab-error-icon">⚠️</div>'
+        + '<div class="tab-error-title">' + error + '</div>'
+        + '<div class="tab-error-detail">' + (detail || '') + '</div>'
+        + '</div>';
+    }
+
+    // 初始化第一个 tab 的图表
+    document.addEventListener('DOMContentLoaded', function() {
+      ${firstTabScript || ''}
+    });
+  `
+
+  return `<!DOCTYPE html><html lang="zh-CN"><head>`
+    + `<meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">`
+    + `<title>AI 用量报告</title>`
+    + `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>`
+    + `<style>${css}</style>`
+    + `</head><body>`
+    + `<div class="container">`
+    + `<div class="header"><div class="header-title">${icon('rocket')} AI 用量报告</div><div class="header-date">${icon('calendar')} ${new Date().toLocaleString()}</div></div>`
+    + `<div class="tab-container">${tabButtons}</div>`
+    + tabContents
+    + `</div>`
+    + `<script>${switchTabScript}</script>`
+    + `</body></html>`
+}
+
 // ── 弹窗展示 HTML 报告 ──────────────────────────────
 
-function openHtmlReport(html, filename, title) {
-  const { BrowserWindow, app } = require('electron')
+function openHtmlReport(html, filename, title, opts) {
+  const { BrowserWindow, app, nativeImage } = require('electron')
   const filePath = path.join(os.tmpdir(), filename)
   fs.writeFileSync(filePath, html, 'utf-8')
 
-  // 获取图标路径，保持与项目其他窗口一致
-  let iconPath
+  // 获取图标，使用 nativeImage 加载（与主窗口一致）
+  let icon
   try {
     const isPackaged = app.isPackaged
     const resourcesPath = process.resourcesPath
     const appDir = path.join(__dirname, '..')
+    let iconPath
     if (process.platform === 'win32') {
       if (isPackaged) {
         iconPath = [
+          path.join(resourcesPath, 'icon.ico'),
+          path.join(resourcesPath, 'app.asar.unpacked', 'assets', 'icon.ico'),
+          path.join(resourcesPath, 'app.asar', 'assets', 'icon.ico'),
           path.join(resourcesPath, 'app.asar.unpacked', 'assets', 'icons', '256x256.png'),
           path.join(resourcesPath, 'app.asar', 'assets', 'icons', '256x256.png'),
-          path.join(resourcesPath, 'icon.ico'),
         ].find(p => { try { return fs.existsSync(p) } catch { return false } })
       } else {
         iconPath = [
-          path.join(appDir, 'assets', 'icons', '256x256.png'),
           path.join(appDir, 'assets', 'icon.ico'),
+          path.join(appDir, 'assets', 'icons', '256x256.png'),
         ].find(p => { try { return fs.existsSync(p) } catch { return false } })
       }
     }
-  } catch {}
+    if (iconPath) {
+      icon = nativeImage.createFromPath(iconPath)
+      console.log('[Report] Icon loaded:', iconPath, '| size:', icon.getSize())
+    }
+  } catch (e) { console.error('[Report] Icon error:', e) }
 
-  const opts = {
+  const winOpts = {
     width: 940,
     height: 720,
     title: title || '用量报告',
     autoHideMenuBar: true,
-    minimizable: true,
-    maximizable: true,
+    minimizable: false,
+    maximizable: false,
     resizable: true,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, ...(opts?.webPreferences || {}) },
   }
-  if (iconPath) opts.icon = iconPath
+  if (icon) winOpts.icon = icon
 
-  const win = new BrowserWindow(opts)
+  const win = new BrowserWindow(winOpts)
+  // 窗口创建后再次设置图标（解决 Windows 任务栏图标缓存问题）
+  if (icon) {
+    try { win.setIcon(icon) } catch (e) { console.error('[Report] setIcon error:', e) }
+  }
   win.loadFile(filePath)
   win.on('closed', () => {
     try { fs.unlinkSync(filePath) } catch {}
   })
+}
+
+// ── 生成单个 Tab 的报告内容 ─────────────────────────
+
+async function buildMimoPlanTab(cfg, now, today, yesterday, monthStr) {
+  const mimoCfg = cfg.mimo || {}
+  const COOKIE = mimoCfg.cookie || ''
+  const PRICES = mimoCfg.prices || DEFAULT_PRICES.mimo
+
+  if (!COOKIE.trim()) {
+    return { error: '请先配置 MiMo Cookie', detail: '点击右上角菜单 → 配置，填入 MiMo Cookie' }
+  }
+
+  const y = now.getFullYear(), mo = now.getMonth() + 1
+  const ph = (COOKIE.match(/api-platform_ph="?([^";]+)"?/) || [])[1] || ''
+  const commonHeaders = getMimoCommonHeaders(COOKIE)
+
+  // 获取积分使用情况
+  let tokenUsage = { totalLimit: 0, totalUsed: 0, percent: 0 }
+  try {
+    const usageRes = await httpsGet('platform.xiaomimimo.com', '/api/v1/tokenPlan/usage',
+      { ...commonHeaders, Referer: 'https://platform.xiaomimimo.com/console/plan-manage' }
+    )
+    if (usageRes.code === 0 && usageRes.data?.usage?.items) {
+      const items = usageRes.data.usage.items
+      tokenUsage.totalLimit = items.reduce((sum, item) => sum + (item.limit || 0), 0)
+      tokenUsage.totalUsed = items.reduce((sum, item) => sum + (item.used || 0), 0)
+      tokenUsage.percent = tokenUsage.totalLimit > 0 ? (tokenUsage.totalUsed / tokenUsage.totalLimit * 100) : 0
+    }
+  } catch {}
+
+  const apiPath = '/api/v1/usage/token-plan/list'
+  let data = await fetchMimoData(COOKIE, ph, commonHeaders, apiPath, y, mo)
+  try {
+    const prevData = await fetchMimoData(COOKIE, ph, commonHeaders, apiPath, mo === 1 ? y - 1 : y, mo === 1 ? 12 : mo - 1)
+    data = prevData.concat(data)
+  } catch {}
+
+  const { dailyData, modelData, totalCost } = aggregateDailyAndModel(data, monthStr, r => calcCost(PRICES, r.model, r.cacheHit, r.cacheMiss, r.output))
+  for (const v of Object.values(dailyData)) v.official = 0
+  for (const v of Object.values(modelData)) v.official = 0
+  const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
+
+  let _workdays = 0
+  for (let _d = 1; _d <= now.getDate(); _d++) {
+    const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+    if (_dow !== 0 && _dow !== 6) _workdays++
+  }
+  const daysPassed = _workdays || 1
+  const dailyAvg = totalCost / daysPassed
+  const monthlyEstimate = dailyAvg * 22
+  const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+  const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+  const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+  const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
+
+  const percentColor = tokenUsage.percent >= 80 ? COLORS.danger : tokenUsage.percent >= 50 ? COLORS.warning : COLORS.success
+
+  // 计算积分相关指标
+  const remainingTokens = tokenUsage.totalLimit - tokenUsage.totalUsed
+  const remainingPercent = tokenUsage.totalLimit > 0 ? (remainingTokens / tokenUsage.totalLimit * 100) : 0
+  const dailyTokenAvg = tokenUsage.totalUsed / (daysPassed || 1)
+  const monthlyTokenEstimate = dailyTokenAvg * 22
+
+  // 摘要条使用积分维度
+  const remainingColor = remainingPercent <= 20 ? COLORS.danger : remainingPercent <= 50 ? COLORS.warning : COLORS.success
+  const summaryText = `套餐积分 <strong>${fmtM(tokenUsage.totalLimit)}M</strong>，已使用 <strong>${fmtM(tokenUsage.totalUsed)}M</strong>，剩余 <strong style="color:${remainingColor}">${fmtM(remainingTokens)}M</strong>，使用率 <strong style="color:${percentColor}">${tokenUsage.percent.toFixed(1)}%</strong>`
+  let body = `<div class="summary-bar"><div class="summary-icon">📊</div><div class="summary-text">${summaryText}</div></div>`
+
+  // 统计卡片（第一行）
+  const daysRemaining = dailyTokenAvg > 0 ? Math.floor(remainingTokens / dailyTokenAvg) : '-'
+  body += buildStatsGrid([
+    { color: 'green', icon: 'token', label: '剩余积分', value: fmtM(remainingTokens) + 'M' },
+    { color: 'blue', icon: 'chart', label: '预计可用天数', value: daysRemaining === '-' ? '-' : daysRemaining + ' 天' },
+    { color: 'orange', icon: 'trend', label: '日均积分使用', value: fmtM(dailyTokenAvg) + 'M' },
+    { color: 'purple', icon: 'target', label: '全月预估', value: fmtM(monthlyTokenEstimate) + 'M' },
+  ])
+
+  // 洞察卡片（积分维度）
+  const totalTokenUsage = sortedDays.reduce((sum, d) => sum + d[1].total, 0)
+  const avgRequestToken = totalRequests > 0 ? (totalTokenUsage / totalRequests) : 0
+
+  // 计算周环比（积分维度）
+  const getDateStr = (daysAgo) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() - daysAgo)
+    return d.toISOString().slice(0, 10)
+  }
+  let thisWeekToken = 0, lastWeekToken = 0
+  for (let i = 0; i < 7; i++) {
+    const todayStr = getDateStr(i)
+    const lastWeekStr = getDateStr(i + 7)
+    thisWeekToken += (dailyData[todayStr]?.total || 0)
+    lastWeekToken += (dailyData[lastWeekStr]?.total || 0)
+  }
+  const weekTokenChange = lastWeekToken > 0 ? ((thisWeekToken - lastWeekToken) / lastWeekToken * 100) : 0
+  const weekTokenTrend = weekTokenChange > 5 ? 'up' : weekTokenChange < -5 ? 'down' : 'neutral'
+  const weekTokenIcon = weekTokenChange > 0 ? '↑' : weekTokenChange < 0 ? '↓' : '→'
+
+  // 峰值日（积分维度）
+  let peakTokenDay = ''
+  let peakTokenCost = 0
+  for (let i = 0; i < 7; i++) {
+    const dt = getDateStr(i)
+    const day = dailyData[dt]
+    if (day && day.total > peakTokenCost) {
+      peakTokenCost = day.total
+      peakTokenDay = dt.slice(5)
+    }
+  }
+
+  // 全月预估是否超标
+  const isOverLimit = monthlyTokenEstimate > tokenUsage.totalLimit
+
+  body += `<div class="insight-grid">
+    <div class="insight-card">
+      <div class="insight-label">${icon('trend')} 周环比(积分)</div>
+      <div class="insight-value" style="color:${weekTokenTrend === 'up' ? COLORS.danger : weekTokenTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekTokenIcon} ${Math.abs(weekTokenChange).toFixed(1)}%</div>
+      <div class="insight-trend ${weekTokenTrend}">${weekTokenTrend === 'up' ? '消耗上升' : weekTokenTrend === 'down' ? '消耗下降' : '基本持平'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('request')} 均请求积分</div>
+      <div class="insight-value" style="color:var(--color-primary)">${fmtM(avgRequestToken)}M</div>
+      <div class="insight-trend neutral">每次请求</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('cache')} 缓存命中率</div>
+      <div class="insight-value" style="color:${hitRate >= 95 ? COLORS.success : hitRate < 80 ? COLORS.danger : COLORS.warning}">${hitRate.toFixed(1)}%</div>
+      <div class="insight-trend ${hitRate >= 95 ? 'down' : hitRate < 80 ? 'up' : 'neutral'}">${hitRate >= 95 ? '优秀' : hitRate < 80 ? '需优化' : '正常'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-label">${icon('chart')} 峰值日</div>
+      <div class="insight-value" style="color:var(--color-warning)">${peakTokenDay || '-'}</div>
+      <div class="insight-trend neutral">${peakTokenCost > 0 ? fmtM(peakTokenCost) + 'M' : '-'}</div>
+    </div>
+  </div>`
+
+  // 全月预估超标警告（显示预计使用到哪一天）
+  if (isOverLimit && dailyTokenAvg > 0) {
+    const workdaysLeft = Math.floor(remainingTokens / dailyTokenAvg)
+    const todayObj = new Date(today)
+    const exhaustDate = new Date(todayObj)
+    let added = 0
+    while (added < workdaysLeft) {
+      exhaustDate.setDate(exhaustDate.getDate() + 1)
+      const dow = exhaustDate.getDay()
+      if (dow !== 0 && dow !== 6) added++
+    }
+    const exhaustMonth = exhaustDate.getMonth() + 1
+    const exhaustDay = exhaustDate.getDate()
+    body += `<div class="suggest suggest-red" style="margin-bottom:16px;flex-direction:column;align-items:flex-start;gap:4px">
+      <div>${icon('danger')} 按当前日均消耗，预计 <strong>${exhaustMonth}月${exhaustDay}号</strong> 用尽套餐积分</div>
+      <div style="font-size:13px;opacity:.9">💡 建议控制使用量或升级套餐</div>
+    </div>`
+  }
+
+  // Credits 换算公式（用于每日明细的积分消耗列）
+  const CREDITS = {
+    'mimo-v2.5':     { cacheHit: 2,   cacheMiss: 100, output: 200 },
+    'mimo-v2.5-pro': { cacheHit: 2.5, cacheMiss: 300, output: 600 },
+  }
+
+  body += buildChartsSectionForToken('mimo-plan')
+  body += buildDayDetailRowsForToken(sortedDays, today, yesterday, CREDITS)
+  body += buildModelDetailCardsForToken(modelEntries)
+
+  // 图表数据（积分维度）
+  const chartTokens = sortedDays.map(d => +(d[1].total / 1e6).toFixed(4))
+  const modelTokens = modelEntries.map(e => (e[1].cacheHit + e[1].cacheMiss + e[1].output) / 1e6)
+  const totalTokensM = totalTokenUsage / 1e6
+
+  const script = buildChartScriptForToken(chartLabels, chartTokens, chartRequests, modelNames, modelTokens, totalTokensM, 'mimo-plan')
+  return { content: body, script }
+}
+
+async function buildMimoPaygTab(cfg, now, today, yesterday, monthStr) {
+  const mimoCfg = cfg.mimo || {}
+  const COOKIE = mimoCfg.cookie || ''
+
+  if (!COOKIE.trim()) {
+    return { error: '请先配置 MiMo Cookie', detail: '点击右上角菜单 → 配置，填入 MiMo Cookie' }
+  }
+
+  const y = now.getFullYear(), mo = now.getMonth() + 1
+  const ph = (COOKIE.match(/api-platform_ph="?([^";]+)"?/) || [])[1] || ''
+  const commonHeaders = getMimoCommonHeaders(COOKIE)
+
+  let balance = 0
+  try {
+    const balanceRes = await httpsGet('platform.xiaomimimo.com', '/api/v1/balance', commonHeaders)
+    if (balanceRes.code === 0) balance = parseFloat(balanceRes.data?.balance) || 0
+  } catch {}
+
+  let data = await fetchMimoPaygData(COOKIE, ph, commonHeaders, y, mo)
+  try {
+    const prevMo = mo === 1 ? 12 : mo - 1, prevY = mo === 1 ? y - 1 : y
+    const prevRes = await httpsPost('platform.xiaomimimo.com', '/api/v1/usage/detail/list' + '?api-platform_ph=' + encodeURIComponent(ph),
+      { year: prevY, month: prevMo },
+      { ...commonHeaders, Referer: 'https://platform.xiaomimimo.com/console/usage' }
+    )
+    if (prevRes.code === 0) {
+      const prevData = (prevRes.data || []).map(i => ({
+        date: i.date, model: i.model, total: i.totalToken || 0,
+        cacheHit: i.inputHitToken || 0, cacheMiss: i.inputMissToken || 0,
+        output: i.outputToken || 0, requests: i.requestCount || 0,
+        cost: parseFloat(i.consumedAmount) || 0,
+      }))
+      data = prevData.concat(data)
+    }
+  } catch {}
+
+  const { dailyData, modelData, totalCost } = aggregateDailyAndModel(data, monthStr, r => r.cost)
+  for (const v of Object.values(dailyData)) v.official = 0
+  for (const v of Object.values(modelData)) v.official = 0
+  const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
+
+  let _workdays = 0
+  for (let _d = 1; _d <= now.getDate(); _d++) {
+    const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+    if (_dow !== 0 && _dow !== 6) _workdays++
+  }
+  const daysPassed = _workdays || 1
+  const dailyAvg = totalCost / daysPassed
+  const monthlyEstimate = dailyAvg * 22
+  const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+  const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+  const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+  const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
+
+  let body = buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate)
+  body += buildStatsGrid([
+    { color: 'purple', icon: 'money', label: '账户余额', value: '¥' + balance.toFixed(2) },
+    { color: 'blue', icon: 'money', label: '本月总费用', value: '¥' + totalCost.toFixed(2) },
+    { color: 'green', icon: 'chart', label: '日均费用', value: '¥' + dailyAvg.toFixed(2) },
+    { color: 'orange', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
+  ])
+  body += buildInsightCards(dailyData, totalCost, totalRequests)
+  body += buildChartsSection('mimo-payg')
+  body += buildDayDetailRows(sortedDays, today, yesterday)
+  body += buildModelDetailCards(modelEntries)
+
+  body += `<div class="card"><div class="card-title">${icon('bulb')} 智能建议</div>`
+  if (monthlyEstimate >= 34.32) {
+    body += `<div class="suggest suggest-red">${icon('danger')} 建议购买 Lite 套餐 (¥34.32/月)，可节省费用</div>`
+  } else if (monthlyEstimate >= 20) {
+    body += `<div class="suggest suggest-yellow">${icon('warning')} 接近套餐阈值，可考虑购买套餐</div>`
+  } else {
+    body += `<div class="suggest suggest-green">${icon('success')} 继续按量付费更划算</div>`
+  }
+  body += '</div>'
+
+  const script = buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost, null, 'mimo-payg')
+  return { content: body, script }
+}
+
+async function buildDeepseekTab(cfg, now, today, yesterday, monthStr) {
+  const dsCfg = cfg.deepseek || {}
+  const AUTH_TOKEN = dsCfg.authToken || ''
+  const COOKIE = dsCfg.cookie || ''
+  const PRICES = dsCfg.prices || DEFAULT_PRICES.deepseek
+
+  if (!AUTH_TOKEN.trim()) {
+    return { error: '请先配置 DeepSeek Auth Token', detail: '点击右上角菜单 → 配置，填入 DeepSeek Auth Token' }
+  }
+
+  const y = now.getFullYear(), mo = now.getMonth() + 1
+  const dsHeaders = {
+    'accept': '*/*', 'authorization': 'Bearer ' + AUTH_TOKEN, cookie: COOKIE,
+    'referer': 'https://platform.deepseek.com/usage', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+    'x-app-version': '1.0.0',
+  }
+
+  let balance = 0
+  try {
+    const balanceRes = await httpsGet('platform.deepseek.com', '/api/v0/users/get_user_summary', dsHeaders)
+    if (balanceRes.code === 0 && balanceRes.data?.biz_data?.normal_wallets?.[0]) {
+      balance = Number(balanceRes.data.biz_data.normal_wallets[0].balance) || 0
+    }
+  } catch {}
+
+  const tokenRes = await httpsGet('platform.deepseek.com', '/api/v0/usage/amount?month=' + mo + '&year=' + y, dsHeaders)
+  if (tokenRes.code !== 0) throw new Error('Token API 错误: ' + JSON.stringify(tokenRes))
+
+  let data = parseDsTokenData(tokenRes)
+
+  const prevMo = mo === 1 ? 12 : mo - 1, prevY = mo === 1 ? y - 1 : y
+  try {
+    const prevToken = await httpsGet('platform.deepseek.com', '/api/v0/usage/amount?month=' + prevMo + '&year=' + prevY, dsHeaders)
+    if (prevToken.code === 0) data = parseDsTokenData(prevToken).concat(data)
+  } catch {}
+
+  const { dailyData, modelData, totalCost } = aggregateDailyAndModel(
+    data.filter(r => r.date <= today), monthStr,
+    r => calcCost(PRICES, r.model, r.cacheHit, r.cacheMiss, r.output)
+  )
+
+  const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
+
+  let _workdays = 0
+  for (let _d = 1; _d <= now.getDate(); _d++) {
+    const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+    if (_dow !== 0 && _dow !== 6) _workdays++
+  }
+  const daysPassed = _workdays || 1
+  const dailyAvg = totalCost / daysPassed
+  const monthlyEstimate = dailyAvg * 22
+  const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
+  const totalHit = sortedDays.reduce((sum, d) => sum + d[1].cacheHit, 0)
+  const totalMiss = sortedDays.reduce((sum, d) => sum + d[1].cacheMiss, 0)
+  const hitRate = (totalHit + totalMiss) > 0 ? (totalHit / (totalHit + totalMiss) * 100) : 0
+
+  let body = buildSummaryBar(totalCost, dailyAvg, hitRate, monthlyEstimate)
+  body += buildStatsGrid([
+    { color: 'blue', icon: 'money', label: '账户余额', value: '¥' + parseFloat(balance).toString() },
+    { color: 'green', icon: 'money', label: '本月总费用', value: '¥' + totalCost.toFixed(2) },
+    { color: 'orange', icon: 'chart', label: '日均费用', value: '¥' + dailyAvg.toFixed(2) },
+    { color: 'purple', icon: 'trend', label: '全月预估(22天)', value: '¥' + monthlyEstimate.toFixed(2) },
+  ])
+  body += buildInsightCards(dailyData, totalCost, totalRequests)
+  body += buildChartsSection('deepseek')
+  body += buildDayDetailRows(sortedDays, today, yesterday)
+  body += buildModelDetailCards(modelEntries)
+
+  const script = buildChartScript(chartLabels, chartCosts, chartRequests, modelNames, modelCosts, totalCost, null, 'deepseek')
+  return { content: body, script }
+}
+
+// ── 生成错误提示 HTML ──────────────────────────────
+
+function buildErrorContent(error, detail) {
+  return `<div class="tab-error">
+    <div class="tab-error-icon">⚠️</div>
+    <div class="tab-error-title">${esc(error)}</div>
+    <div class="tab-error-detail">${esc(detail || '')}</div>
+  </div>`
+}
+
+// ══════════════════════════════════════════════════════
+//  统一报告（Tab 切换，按需加载）
+// ══════════════════════════════════════════════════════
+
+async function runUnifiedReport() {
+  const cfg = loadConfig()
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const yesterday = getDateStr(1)
+  const monthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
+
+  // 只加载第一个 Tab（MiMo 套餐）的数据
+  const firstResult = await buildMimoPlanTab(cfg, now, today, yesterday, monthStr)
+    .catch(e => ({ error: 'MiMo 套餐数据获取失败', detail: e.message }))
+
+  const tabs = [
+    {
+      id: 'mimo-plan',
+      label: 'MiMo 套餐',
+      icon: '📦',
+      content: firstResult.error ? buildErrorContent(firstResult.error, firstResult.detail) : firstResult.content,
+    },
+    {
+      id: 'mimo-payg',
+      label: 'MiMo 按量',
+      icon: '💰',
+      content: buildLoadingPlaceholder(),
+    },
+    {
+      id: 'deepseek',
+      label: 'DeepSeek',
+      icon: '🤖',
+      content: buildLoadingPlaceholder(),
+    },
+  ]
+
+  const firstTabScript = firstResult.script || ''
+  const css = buildReportCss(4)
+  const html = wrapUnifiedReport(css, tabs, firstTabScript)
+
+  // 打开窗口，使用 preload 脚本支持 IPC
+  const preloadPath = path.join(__dirname, '..', 'src', 'preload-report.js')
+  openHtmlReport(html, 'cc_unified_report.html', 'AI 用量报告', {
+    webPreferences: { preload: preloadPath }
+  })
+}
+
+// ── IPC 调用：按需加载 Tab 数据 ─────────────────────
+
+async function loadTabContent(tabId) {
+  const cfg = loadConfig()
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const yesterday = getDateStr(1)
+  const monthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
+
+  try {
+    let result
+    switch (tabId) {
+      case 'mimo-payg':
+        result = await buildMimoPaygTab(cfg, now, today, yesterday, monthStr)
+        break
+      case 'mimo-plan':
+        result = await buildMimoPlanTab(cfg, now, today, yesterday, monthStr)
+        break
+      case 'deepseek':
+        result = await buildDeepseekTab(cfg, now, today, yesterday, monthStr)
+        break
+      default:
+        return { error: '未知 Tab', detail: tabId }
+    }
+    return result.error ? { error: result.error, detail: result.detail } : { content: result.content, script: result.script || '' }
+  } catch (e) {
+    return { error: '数据获取失败', detail: e.message }
+  }
 }
 
 // ── API 请求 ─────────────────────────────────────────
@@ -1526,7 +2279,12 @@ async function runMimoReport() {
     for (const v of Object.values(modelData)) v.official = 0
     const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
 
-    const daysPassed = now.getDate() || 1
+    let _workdays = 0
+    for (let _d = 1; _d <= now.getDate(); _d++) {
+      const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+      if (_dow !== 0 && _dow !== 6) _workdays++
+    }
+    const daysPassed = _workdays || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
     const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
@@ -1637,7 +2395,12 @@ async function runMimoPaygReport() {
     for (const v of Object.values(modelData)) v.official = 0
     const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
 
-    const daysPassed = now.getDate() || 1
+    let _workdays = 0
+    for (let _d = 1; _d <= now.getDate(); _d++) {
+      const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+      if (_dow !== 0 && _dow !== 6) _workdays++
+    }
+    const daysPassed = _workdays || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
     const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
@@ -1736,7 +2499,12 @@ async function runDeepseekReport() {
 
     const { sortedDays, chartLabels, chartCosts, chartRequests, modelEntries, modelNames, modelCosts } = buildChartData(dailyData, modelData)
 
-    const daysPassed = now.getDate() || 1
+    let _workdays = 0
+    for (let _d = 1; _d <= now.getDate(); _d++) {
+      const _dow = new Date(now.getFullYear(), now.getMonth(), _d).getDay()
+      if (_dow !== 0 && _dow !== 6) _workdays++
+    }
+    const daysPassed = _workdays || 1
     const dailyAvg = totalCost / daysPassed
     const monthlyEstimate = dailyAvg * 22
     const totalRequests = sortedDays.reduce((sum, d) => sum + d[1].requests, 0)
@@ -1801,4 +2569,4 @@ function parseDsAmountData(apiRes) {
   return result.filter(r => r.model !== 'deepseek-chat & deepseek-reasoner')
 }
 
-module.exports = { runMimoReport, runMimoPaygReport, runDeepseekReport, openBillingConfig, updateBillingConfig, parseBillingFile }
+module.exports = { runMimoReport, runMimoPaygReport, runDeepseekReport, runUnifiedReport, loadTabContent, openBillingConfig, updateBillingConfig, parseBillingFile }

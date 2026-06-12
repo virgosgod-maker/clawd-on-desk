@@ -5,7 +5,7 @@ const path = require('path')
 const fs = require('fs')
 const { parseBillingFile, updateBillingConfig } = require('./billing')
 
-// 获取图标路径，保持与项目其他窗口一致
+// 获取图标路径，保持与项目其他窗口一致（优先使用 .ico 文件）
 function getReportWindowIconPath() {
   try {
     const isPackaged = app.isPackaged
@@ -14,14 +14,16 @@ function getReportWindowIconPath() {
     if (process.platform === 'win32') {
       if (isPackaged) {
         return [
+          path.join(resourcesPath, 'icon.ico'),
+          path.join(resourcesPath, 'app.asar.unpacked', 'assets', 'icon.ico'),
+          path.join(resourcesPath, 'app.asar', 'assets', 'icon.ico'),
           path.join(resourcesPath, 'app.asar.unpacked', 'assets', 'icons', '256x256.png'),
           path.join(resourcesPath, 'app.asar', 'assets', 'icons', '256x256.png'),
-          path.join(resourcesPath, 'icon.ico'),
         ].find(p => { try { return fs.existsSync(p) } catch { return false } })
       } else {
         return [
-          path.join(appDir, 'assets', 'icons', '256x256.png'),
           path.join(appDir, 'assets', 'icon.ico'),
+          path.join(appDir, 'assets', 'icons', '256x256.png'),
         ].find(p => { try { return fs.existsSync(p) } catch { return false } })
       }
     }
@@ -31,6 +33,7 @@ function getReportWindowIconPath() {
 
 // MiMo 内嵌浏览器登录 — 登录后自动抓取 Cookie 写入配置
 function mimoLogin() {
+  const { nativeImage } = require('electron')
   const kv = parseBillingFile()
   const savedUser = (kv.mimo_username || '').trim()
   const savedPass = (kv.mimo_password || '').trim()
@@ -39,14 +42,26 @@ function mimoLogin() {
     width: 600, height: 700,
     title: 'MiMo 登录',
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    minimizable: false,
+    maximizable: false,
+    webPreferences: { contextIsolation: true, sandbox: true, partition: 'persist:mimo-login' },
   }
   const iconPath = getReportWindowIconPath()
-  if (iconPath) opts.icon = iconPath
+  if (iconPath) {
+    opts.icon = nativeImage.createFromPath(iconPath)
+    console.log('[MiMo Login] Icon loaded:', iconPath)
+  }
 
   let loginWin = new BrowserWindow(opts)
+  // 窗口创建后再次设置图标（解决 Windows 任务栏图标缓存问题）
+  if (iconPath) {
+    try { loginWin.setIcon(nativeImage.createFromPath(iconPath)) } catch (e) { console.error('[MiMo Login] setIcon error:', e) }
+  }
 
-  loginWin.loadURL('https://platform.xiaomimimo.com/login')
+  // 清空登录专用 partition 的 cookie，确保干净状态
+  loginWin.webContents.session.clearStorageData({ storages: ['cookies'] }).then(() => {
+    loginWin.loadURL('https://platform.xiaomimimo.com/login')
+  })
 
   // 页面加载完成后自动填充账号密码
   // 使用 nativeInputValueSetter 绕过前端框架的 getter/setter 拦截
@@ -108,16 +123,26 @@ function mimoLogin() {
 
 // DeepSeek 内嵌浏览器登录 — 从网络请求中拦截 auth token
 function deepseekLogin() {
+  const { nativeImage } = require('electron')
   const opts = {
     width: 600, height: 700,
     title: 'DeepSeek 登录',
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    minimizable: false,
+    maximizable: false,
+    webPreferences: { contextIsolation: true, sandbox: true, partition: 'persist:deepseek-login' },
   }
   const iconPath = getReportWindowIconPath()
-  if (iconPath) opts.icon = iconPath
+  if (iconPath) {
+    opts.icon = nativeImage.createFromPath(iconPath)
+    console.log('[DeepSeek Login] Icon loaded:', iconPath)
+  }
 
   let loginWin = new BrowserWindow(opts)
+  // 窗口创建后再次设置图标（解决 Windows 任务栏图标缓存问题）
+  if (iconPath) {
+    try { loginWin.setIcon(nativeImage.createFromPath(iconPath)) } catch (e) { console.error('[DeepSeek Login] setIcon error:', e) }
+  }
 
   let loginDone = false
 
@@ -148,8 +173,11 @@ function deepseekLogin() {
     }
   )
 
-  // 直接打开 usage 页面，未登录会自动跳转到登录页
-  loginWin.loadURL('https://platform.deepseek.com/usage')
+  // 先清空 session cookie，防止旧 cookie 导致误判
+  loginWin.webContents.session.clearStorageData({ storages: ['cookies'] }).then(() => {
+    // 直接打开 usage 页面，未登录会自动跳转到登录页
+    loginWin.loadURL('https://platform.deepseek.com/usage')
+  })
 
   loginWin.on('closed', () => { loginDone = true; loginWin = null })
 }

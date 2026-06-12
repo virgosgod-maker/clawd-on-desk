@@ -1,6 +1,6 @@
 "use strict";
 
-const { runMimoReport, runMimoPaygReport, runDeepseekReport, openBillingConfig } = require('./billing')
+const { runUnifiedReport, openBillingConfig } = require('./billing')
 const { mimoLogin, deepseekLogin } = require('./report-window')
 
 /**
@@ -14,24 +14,18 @@ const { mimoLogin, deepseekLogin } = require('./report-window')
 function buildReportSubmenu(t) {
   return [
     {
-      label: 'MiMo',
-      submenu: [
-        { label: t('reportPayg'), click: () => { runMimoPaygReport().catch(e => console.error('[Report Menu] mimo-payg:', e)) } },
-        { label: t('reportPlan'), click: () => { runMimoReport().catch(e => console.error('[Report Menu] mimo-plan:', e)) } },
-        { type: 'separator' },
-        { label: t('reportRefreshLogin'), click: () => { mimoLogin() } },
-      ],
+      label: 'AI 用量报告',
+      click: () => { runUnifiedReport().catch(e => console.error('[Report Menu] unified:', e)) }
     },
     {
-      label: 'DeepSeek',
+      label: t('reportRefreshLogin') || '刷新登录',
       submenu: [
-        { label: t('reportPayg'), click: () => { runDeepseekReport().catch(e => console.error('[Report Menu] deepseek:', e)) } },
-        { type: 'separator' },
-        { label: t('reportRefreshLogin'), click: () => { deepseekLogin() } },
+        { label: 'MiMo', click: () => { mimoLogin() } },
+        { label: 'DeepSeek', click: () => { deepseekLogin() } },
       ],
     },
     { type: 'separator' },
-    { label: t('reportConfig'), click: () => { openBillingConfig() } },
+    { label: t('reportConfig') || '配置', click: () => { openBillingConfig() } },
   ]
 }
 
