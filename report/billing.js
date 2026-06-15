@@ -20,14 +20,10 @@ const DEFAULT_PRICES = {
 const DEFAULT_BILLING_TEXT = [
   '# ── MiMo ──',
   'mimo_cookie=',
-  'mimo_username=',
-  'mimo_password=',
   '',
   '# ── DeepSeek ──',
   'deepseek_auth_token=',
   'deepseek_cookie=',
-  'deepseek_username=',
-  'deepseek_password=',
   '',
   '# ── MiMo 套餐（元/年，除以12为月费）──',
   'mimo_plans=' + JSON.stringify([
@@ -125,8 +121,6 @@ function openBillingConfig() {
     detail: BILLING_FILE + '\n\n'
       + '格式：key=value（每行一个）\n'
       + '  mimo_cookie=粘贴MiMo Cookie\n'
-      + '  mimo_username=MiMo账号（用于自动填充登录）\n'
-      + '  mimo_password=MiMo密码（用于自动填充登录）\n'
       + '  deepseek_auth_token=粘贴Token\n'
       + '  deepseek_cookie=粘贴Cookie\n\n'
       + '直接粘贴原始值即可，无需转义。',
