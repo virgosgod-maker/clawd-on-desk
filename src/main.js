@@ -1603,6 +1603,20 @@ showDashboard = _dashboard.showDashboard;
 broadcastDashboardSessionSnapshot = _dashboard.broadcastSessionSnapshot;
 sendDashboardI18n = _dashboard.sendI18n;
 
+// ── Session Viewer (session history browser) ──
+const _sessionViewer = require("./session-viewer")({
+  t: (key) => translate(key),
+  getTextScale: () => effectiveTextScaleForKey(
+    getWindowDisplayKey(_sessionViewer ? _sessionViewer.getWindow() : null) || getPetDisplayKey()
+  ),
+  iconPath: settingsWindowRuntime.getIconPath(),
+});
+const { registerSessionViewerIpc } = require("./session-viewer-ipc");
+registerSessionViewerIpc({
+  ipcMain,
+  getLang: () => lang,
+});
+
 // ── First-run onboarding tutorial ──
 // Buckets the installable agents for the tutorial's step 2. We call the
 // detector with skipDefaultIntegrations:false so the default integrations
@@ -2865,6 +2879,7 @@ const _menuCtx = {
   checkForUpdates: (...args) => checkForUpdates(...args),
   getUpdateMenuItem: () => getUpdateMenuItem(),
   openDashboard: () => showDashboard(),
+  openSessionViewer: () => _sessionViewer.showSessionViewer(),
   launchClaudeSession: (mode, cwd, sessionId) => launchClaudeSession(mode, cwd, sessionId),
   newSessionWithFolder: async (t) => {
     const parent = win && !win.isDestroyed() ? win : null;

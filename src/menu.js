@@ -204,6 +204,12 @@ module.exports = function initMenu(ctx) {
           if (typeof ctx.openDashboard === "function") ctx.openDashboard();
         },
       },
+      {
+        label: t("openSessionHistory") || "Session History",
+        click: () => {
+          if (typeof ctx.openSessionViewer === "function") ctx.openSessionViewer();
+        },
+      },
       buildAutoApproveMenuItem(),
     ];
 
@@ -419,6 +425,12 @@ module.exports = function initMenu(ctx) {
         label: t("openDashboard"),
         click: () => {
           if (typeof ctx.openDashboard === "function") ctx.openDashboard();
+        },
+      },
+      {
+        label: t("openSessionHistory") || "Session History",
+        click: () => {
+          if (typeof ctx.openSessionViewer === "function") ctx.openSessionViewer();
         },
       },
       {
