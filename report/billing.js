@@ -37,6 +37,9 @@ const DEFAULT_BILLING_TEXT = [
   'mimo_prices=' + JSON.stringify(DEFAULT_PRICES.mimo),
   'deepseek_prices=' + JSON.stringify(DEFAULT_PRICES.deepseek),
   '',
+  '# ── Tab 显示顺序（逗号分隔）──',
+  'tab_order=mimo-plan,mimo-payg,deepseek',
+  '',
 ].join('\n')
 
 // ── 配置（单文件 key=value 格式，无需转义）─────────
@@ -75,6 +78,7 @@ function loadConfig() {
     return {
       mimo: { cookie: strip(kv.mimo_cookie), prices: mimoPrices, plans: mimoPlans },
       deepseek: { authToken: strip(kv.deepseek_auth_token), cookie: strip(kv.deepseek_cookie), prices: dsPrices },
+      tabOrder: kv.tab_order || '',
     }
   } catch {
     return {
@@ -1250,7 +1254,6 @@ function buildInsightCards(dailyData, totalCost, totalRequests) {
     return d.toISOString().slice(0, 10)
   }
 
-  // 本周和上周的日期范围
   let thisWeekCost = 0, lastWeekCost = 0
   for (let i = 0; i < 7; i++) {
     const todayStr = getDateStr(i)
@@ -1258,9 +1261,10 @@ function buildInsightCards(dailyData, totalCost, totalRequests) {
     thisWeekCost += (dailyData[todayStr]?.cost || 0)
     lastWeekCost += (dailyData[lastWeekStr]?.cost || 0)
   }
-  const weekChange = lastWeekCost > 0 ? ((thisWeekCost - lastWeekCost) / lastWeekCost * 100) : 0
+  const weekChange = lastWeekCost > 0 ? ((thisWeekCost - lastWeekCost) / lastWeekCost * 100) : (thisWeekCost > 0 ? 9999 : 0)
   const weekTrend = weekChange > 5 ? 'up' : weekChange < -5 ? 'down' : 'neutral'
-  const weekIcon = weekChange > 0 ? '↑' : weekChange < 0 ? '↓' : '→'
+  const weekIcon = weekChange >= 9999 ? '↑' : weekChange > 0 ? '↑' : weekChange < 0 ? '↓' : '→'
+  const weekLabel = weekChange >= 9999 ? '新增消费' : weekChange > 5 ? '费用上升' : weekChange < -5 ? '费用下降' : '基本持平'
 
   // 平均请求成本
   const avgCost = totalRequests > 0 ? (totalCost / totalRequests) : 0
@@ -1292,8 +1296,8 @@ function buildInsightCards(dailyData, totalCost, totalRequests) {
   return `<div class="insight-grid">
     <div class="insight-card">
       <div class="insight-label">${icon('trend')} 周环比</div>
-      <div class="insight-value" style="color:${weekTrend === 'up' ? COLORS.danger : weekTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekIcon} ${Math.abs(weekChange).toFixed(1)}%</div>
-      <div class="insight-trend ${weekTrend}">${weekTrend === 'up' ? '费用上升' : weekTrend === 'down' ? '费用下降' : '基本持平'}</div>
+      <div class="insight-value" style="color:${weekTrend === 'up' ? COLORS.danger : weekTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekIcon} ${weekChange >= 9999 ? '--%' : Math.abs(weekChange).toFixed(1) + '%'}</div>
+      <div class="insight-trend ${weekTrend}">${weekLabel}</div>
     </div>
     <div class="insight-card">
       <div class="insight-label">${icon('request')} 均请求成本</div>
@@ -1758,24 +1762,32 @@ async function buildMimoPlanTab(cfg, now, today, yesterday, monthStr) {
   const totalTokenUsage = sortedDays.reduce((sum, d) => sum + d[1].total, 0)
   const avgRequestToken = totalRequests > 0 ? (totalTokenUsage / totalRequests) : 0
 
-  // 计算周环比（积分维度）
-  const getDateStr = (daysAgo) => {
-    const d = new Date(today)
-    d.setDate(d.getDate() - daysAgo)
-    return d.toISOString().slice(0, 10)
-  }
+  // 计算周环比（按自然周对比，周一→周日）
+  const wowDow = now.getDay()
+  const wowMonOff = wowDow === 0 ? -6 : 1 - wowDow
+  const wowDays = wowDow === 0 ? 7 : wowDow
   let thisWeekToken = 0, lastWeekToken = 0
-  for (let i = 0; i < 7; i++) {
-    const todayStr = getDateStr(i)
-    const lastWeekStr = getDateStr(i + 7)
+  for (let i = 0; i < wowDays; i++) {
+    const d = new Date(now)
+    d.setDate(now.getDate() + wowMonOff + i)
+    const todayStr = d.toISOString().slice(0, 10)
+    const lastD = new Date(d)
+    lastD.setDate(lastD.getDate() - 7)
+    const lastWeekStr = lastD.toISOString().slice(0, 10)
     thisWeekToken += (dailyData[todayStr]?.total || 0)
     lastWeekToken += (dailyData[lastWeekStr]?.total || 0)
   }
-  const weekTokenChange = lastWeekToken > 0 ? ((thisWeekToken - lastWeekToken) / lastWeekToken * 100) : 0
+  const weekTokenChange = lastWeekToken > 0 ? ((thisWeekToken - lastWeekToken) / lastWeekToken * 100) : (thisWeekToken > 0 ? 9999 : 0)
   const weekTokenTrend = weekTokenChange > 5 ? 'up' : weekTokenChange < -5 ? 'down' : 'neutral'
-  const weekTokenIcon = weekTokenChange > 0 ? '↑' : weekTokenChange < 0 ? '↓' : '→'
+  const weekTokenIcon = weekTokenChange >= 9999 ? '🆕' : weekTokenChange > 0 ? '↑' : weekTokenChange < 0 ? '↓' : '→'
+  const weekTokenLabel = weekTokenChange >= 9999 ? '新增消耗' : weekTokenChange > 5 ? '消耗上升' : weekTokenChange < -5 ? '消耗下降' : '基本持平'
 
-  // 峰值日（积分维度）
+  // 峰值日（最近7天，积分维度）
+  const getDateStr = (daysAgo) => {
+    const d = new Date()
+    d.setDate(d.getDate() - daysAgo)
+    return d.toISOString().slice(0, 10)
+  }
   let peakTokenDay = ''
   let peakTokenCost = 0
   for (let i = 0; i < 7; i++) {
@@ -1793,8 +1805,8 @@ async function buildMimoPlanTab(cfg, now, today, yesterday, monthStr) {
   body += `<div class="insight-grid">
     <div class="insight-card">
       <div class="insight-label">${icon('trend')} 周环比(积分)</div>
-      <div class="insight-value" style="color:${weekTokenTrend === 'up' ? COLORS.danger : weekTokenTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekTokenIcon} ${Math.abs(weekTokenChange).toFixed(1)}%</div>
-      <div class="insight-trend ${weekTokenTrend}">${weekTokenTrend === 'up' ? '消耗上升' : weekTokenTrend === 'down' ? '消耗下降' : '基本持平'}</div>
+      <div class="insight-value" style="color:${weekTokenTrend === 'up' ? COLORS.danger : weekTokenTrend === 'down' ? COLORS.success : COLORS.textPrimary}">${weekTokenIcon} ${weekTokenChange >= 9999 ? '--%' : Math.abs(weekTokenChange).toFixed(1) + '%'}</div>
+      <div class="insight-trend ${weekTokenTrend}">${weekTokenLabel}</div>
     </div>
     <div class="insight-card">
       <div class="insight-label">${icon('request')} 均请求积分</div>
@@ -2024,30 +2036,47 @@ async function runUnifiedReport() {
   const yesterday = getDateStr(1)
   const monthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
 
-  // 只加载第一个 Tab（MiMo 套餐）的数据
-  const firstResult = await buildMimoPlanTab(cfg, now, today, yesterday, monthStr)
-    .catch(e => ({ error: 'MiMo 套餐数据获取失败', detail: e.message }))
-
-  const tabs = [
-    {
-      id: 'mimo-plan',
-      label: 'MiMo 套餐',
-      icon: '📦',
-      content: firstResult.error ? buildErrorContent(firstResult.error, firstResult.detail) : firstResult.content,
-    },
-    {
-      id: 'mimo-payg',
-      label: 'MiMo 按量',
-      icon: '💰',
-      content: buildLoadingPlaceholder(),
-    },
-    {
-      id: 'deepseek',
-      label: 'DeepSeek',
-      icon: '🤖',
-      content: buildLoadingPlaceholder(),
-    },
+  // 构建 tab 定义
+  const tabDefs = [
+    { id: 'mimo-plan', label: 'MiMo 套餐', icon: '📦' },
+    { id: 'mimo-payg', label: 'MiMo 按量', icon: '💰' },
+    { id: 'deepseek', label: 'DeepSeek', icon: '🤖' },
   ]
+
+  // 按配置顺序重排
+  if (cfg.tabOrder) {
+    const order = cfg.tabOrder.split(',').map(s => s.trim())
+    tabDefs.sort((a, b) => {
+      const ai = order.indexOf(a.id)
+      const bi = order.indexOf(b.id)
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+    })
+  }
+
+  // 加载第一个 Tab 的数据
+  const firstId = tabDefs[0].id
+  let firstResult
+  switch (firstId) {
+    case 'mimo-plan':
+      firstResult = await buildMimoPlanTab(cfg, now, today, yesterday, monthStr)
+        .catch(e => ({ error: 'MiMo 套餐数据获取失败', detail: e.message }))
+      break
+    case 'mimo-payg':
+      firstResult = await buildMimoPaygTab(cfg, now, today, yesterday, monthStr)
+        .catch(e => ({ error: 'MiMo 按量数据获取失败', detail: e.message }))
+      break
+    case 'deepseek':
+      firstResult = await buildDeepseekTab(cfg, now, today, yesterday, monthStr)
+        .catch(e => ({ error: 'DeepSeek 数据获取失败', detail: e.message }))
+      break
+  }
+
+  const tabs = tabDefs.map(t => ({
+    ...t,
+    content: t.id === firstId
+      ? (firstResult.error ? buildErrorContent(firstResult.error, firstResult.detail) : firstResult.content)
+      : buildLoadingPlaceholder(),
+  }))
 
   const firstTabScript = firstResult.script || ''
   const css = buildReportCss(4)
