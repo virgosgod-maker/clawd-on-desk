@@ -1228,6 +1228,18 @@ function setHitWinFocusable(focusable) {
   const next = !!focusable;
   if (typeof hitWin.isFocusable === "function" && hitWin.isFocusable() === next) return;
   hitWin.setFocusable(next);
+  // Electron's NativeWindowViews::SetFocusable couples activation to the
+  // taskbar on Windows: SetFocusable(true) internally calls
+  // SetSkipTaskbar(false) → ITaskbarList::AddTab, so restoring activation
+  // after a fullscreen exit (or a screenshot overlay dismissing) flashes a
+  // taskbar button for the hit window (#586). Delete the tab again in the
+  // same turn, before the taskbar repaints.
+  // true-direction ONLY: SetFocusable(false) already deletes the tab
+  // internally, and re-deleting on that path broke cursor-drag while a
+  // fullscreen app was foreground (real-machine repro during #586 review;
+  // exact Windows-side mechanism unconfirmed). Do not "simplify" this into
+  // an unconditional call.
+  if (next) keepOutOfTaskbar(hitWin);
 }
 
 // ── Mini Mode — delegated to src/mini.js ──
@@ -1875,6 +1887,7 @@ const _serverCtx = {
   codexSubagentClassifier: agentRuntime.getCodexSubagentClassifier(),
   setState,
   updateSession: agentRuntime.updateSessionFromServer,
+  updateSessionMetadata: (sessionId, opts) => _state.updateSessionMetadata(sessionId, opts),
   resolvePermissionEntry,
   sendPermissionResponse,
   addPendingPermission,
@@ -3678,7 +3691,9 @@ const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
 const _roamCtx = {
   get win() { return win; },
   getPetWindowBounds,
-  applyPetWindowPosition,
+  applyPetWindowBounds,
+  // #569: lets roam anchor to the keep-size frozen size when that toggle is on
+  getEffectiveCurrentPixelSize,
   syncHitWin: () => syncHitWin(),
   repositionSessionHud: () => repositionSessionHud(),
   repositionAnchoredSurfaces: () => repositionAnchoredFloatingSurfaces(),
@@ -3692,6 +3707,7 @@ const _roamCtx = {
   get miniTransitioning() { return _mini.getMiniTransitioning(); },
   applyState: (state, svgOverride, opts) => _state.applyState(state, svgOverride, opts),
   setState: (state, svgOverride, opts) => _state.setState(state, svgOverride, opts),
+  setRoamHeading: (headingLeft) => sendToRenderer("roam-heading", !!headingLeft),
 };
 const _roam = require("./roam")(_roamCtx);
 

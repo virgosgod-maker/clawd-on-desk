@@ -36,6 +36,9 @@ const {
 } = require("./state-session-snapshot");
 const { getAgentIconUrl } = require("./state-agent-icons");
 const { normalizeTranscriptPath } = require("./transcript-path");
+const { normalizeQuotaGroup } = require("../hooks/quota-bucket");
+const { ANTIGRAVITY_QUOTA_FIELDS } = require("../hooks/antigravity-context-usage");
+const { CLAUDE_QUOTA_FIELDS } = require("../hooks/claude-rate-limits");
 const {
   readTranscriptTailEntries: readClaudeTranscriptTailEntries,
   extractLastAssistantTextFromEntries: extractLastClaudeAssistantTextFromEntries,
@@ -946,6 +949,27 @@ function describeSession(sessionId, session) {
   ].join(" ");
 }
 
+// #583: renders hook-reported stdin diagnostics (present only when the hook's
+// stdin payload had no session_id) for the event log line. bytes:0 + timeout:1
+// means stdin never reached the hook; bytes>0 + stdinErr means it arrived
+// mangled — entirely different culprits, distinguishable from one log line.
+// parseError arrives via /state which any local process can forge: strip
+// quotes, backslashes, and control chars (incl. ANSI escapes) so a crafted
+// value cannot close the quoted field early or corrupt the log line.
+function formatStdinDiag(diag) {
+  if (!diag || typeof diag !== "object") return "";
+  const bytes = Number.isFinite(diag.bytes) ? diag.bytes : "-";
+  const durationMs = Number.isFinite(diag.durationMs) ? diag.durationMs : "-";
+  const err = typeof diag.parseError === "string" && diag.parseError
+    ? ` stdinErr="${diag.parseError
+        .replace(/["\\\u0000-\u001F\u007F-\u009F]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80)}"`
+    : "";
+  return ` stdin=bytes:${bytes},timeout:${diag.timedOut === true ? 1 : 0},ms:${durationMs}${err}`;
+}
+
 function resolvePidReachable(existing, agentPid, sourcePid) {
   if (agentPid && isProcessAlive(agentPid)) return true;
   if (sourcePid && isProcessAlive(sourcePid)) return true;
@@ -1057,8 +1081,16 @@ function normalizeContextUsage(value) {
   if (Number.isFinite(limit) && limit > 0) out.limit = limit;
   const percent = Number(value.percent);
   if (Number.isFinite(percent)) out.percent = Math.max(0, Math.min(100, Math.round(percent)));
-  if (value.source === "claude" || value.source === "codex") out.source = value.source;
+  if (value.source === "claude" || value.source === "codex" || value.source === "antigravity") out.source = value.source;
   return out;
+}
+
+function normalizeAntigravityQuota(value) {
+  return normalizeQuotaGroup(value, ANTIGRAVITY_QUOTA_FIELDS);
+}
+
+function normalizeClaudeQuota(value) {
+  return normalizeQuotaGroup(value, CLAUDE_QUOTA_FIELDS);
 }
 
 function updateSessionFocusMetadata(sessionId, opts = {}) {
@@ -1071,6 +1103,55 @@ function updateSessionFocusMetadata(sessionId, opts = {}) {
   const ghosttyTerminalId = normalizeGhosttyTerminalId(opts.ghosttyTerminalId);
   if (!ghosttyTerminalId) return false;
   session.ghosttyTerminalId = ghosttyTerminalId;
+  return true;
+}
+
+// Statusline refresh POSTs (metadata_only: true) annotate a session that real
+// hook traffic already created — they are telemetry, not lifecycle. Hence:
+// never create a session (a statusline for a dead/unknown session id would
+// resurrect it as a ghost card), never touch recentEvents (no hook event
+// happened, and the badge derivation reads that tail), and never bump
+// updatedAt (a statusline refreshing every ~300ms would keep any session
+// eternally "fresh", defeating staleness sweeps and resurrecting completed
+// cards as idle). Quota/context are the only fields a statusline owns.
+// Broadcast goes through emitSessionSnapshot, whose signature dedup already
+// swallows no-op refreshes (quota values are stable between real updates
+// now that resets are stored as absolute timestamps).
+function updateSessionMetadata(sessionId, opts = {}) {
+  const id = typeof sessionId === "string" ? sessionId : "";
+  if (!id) return false;
+  const session = sessions.get(id);
+  if (!session) {
+    debugSession(`metadata-only drop sid=${id} reason=no-session`);
+    return false;
+  }
+  const contextUsage = normalizeContextUsage(opts.contextUsage);
+  const antigravityQuota = normalizeAntigravityQuota(opts.antigravityQuota);
+  const claudeQuota = normalizeClaudeQuota(opts.claudeQuota);
+  if (!contextUsage && !antigravityQuota && !claudeQuota) return false;
+  let changed = false;
+  if (contextUsage && JSON.stringify(contextUsage) !== JSON.stringify(session.contextUsage)) {
+    session.contextUsage = contextUsage;
+    changed = true;
+  }
+  if (antigravityQuota && JSON.stringify(antigravityQuota) !== JSON.stringify(session.antigravityQuota)) {
+    session.antigravityQuota = antigravityQuota;
+    changed = true;
+  }
+  if (claudeQuota && JSON.stringify(claudeQuota) !== JSON.stringify(session.claudeQuota)) {
+    session.claudeQuota = claudeQuota;
+    changed = true;
+  }
+  if (changed) {
+    // Freshness stamp for quota display arbitration only. Deliberately a
+    // separate field from updatedAt: staleness sweeps, badge derivation and
+    // eviction all key on updatedAt, and a statusline heartbeat must not
+    // feed them. Stamped only on real changes, so it cannot re-introduce a
+    // per-tick broadcast (and it is excluded from the snapshot signature
+    // like updatedAt anyway).
+    session.metadataUpdatedAt = Date.now();
+    emitSessionSnapshot();
+  }
   return true;
 }
 
@@ -1221,11 +1302,15 @@ function updateSession(sessionId, state, event, opts = {}) {
     displayHint = undefined,
     sessionTitle = null,
     contextUsage = null,
+    antigravityQuota = null,
+    claudeQuota = null,
     assistantLastOutput = null,
     assistantLastOutputTruncated = false,
     toolName = null,
     transcriptPath = null,
     permissionSuspect = false,
+    permissionAction = null,
+    permissionCommand = null,
     preserveState = false,
     hookSource = null,
     agentIdDefaulted = false,
@@ -1234,6 +1319,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     backgroundTasksCount = 0,
     sessionCronsCount = 0,
     stopHookActive = false,
+    stdinDiag = null,
   } = opts;
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
@@ -1331,7 +1417,9 @@ function updateSession(sessionId, state, event, opts = {}) {
       });
     }
     setState("notification", undefined, { muteNotificationSound: muteNotificationSound === true });
-    if (permAgentId === "kimi-cli") startKimiPermissionPoll(sessionId);
+    if (permAgentId === "kimi-cli") {
+      startKimiPermissionPoll(sessionId, { toolName, permissionAction, permissionCommand });
+    }
     return;
   }
 
@@ -1357,6 +1445,8 @@ function updateSession(sessionId, state, event, opts = {}) {
   // ever been named keeps that name until the user explicitly renames it.
   const srcSessionTitle = normalizeTitle(sessionTitle) || (existing && existing.sessionTitle) || null;
   const srcContextUsage = normalizeContextUsage(contextUsage) || (existing && existing.contextUsage) || null;
+  const srcAntigravityQuota = normalizeAntigravityQuota(antigravityQuota) || (existing && existing.antigravityQuota) || null;
+  const srcClaudeQuota = normalizeClaudeQuota(claudeQuota) || (existing && existing.claudeQuota) || null;
   const srcAssistantLastOutput = normalizeAssistantOutput(assistantLastOutput);
   const srcAssistantLastOutputTruncated = !!(srcAssistantLastOutput && assistantLastOutputTruncated === true);
   const srcToolName = normalizeToolName(toolName) || (existing && existing.lastToolName) || null;
@@ -1452,7 +1542,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     return;
   }
 
-  debugSession(`event ${describeSession(sessionId, existing)} -> incoming=${state}/${event || "-"} hint=${displayHint || "-"} source=${hookSource || "-"}`);
+  debugSession(`event ${describeSession(sessionId, existing)} -> incoming=${state}/${event || "-"} hint=${displayHint || "-"} source=${hookSource || "-"}${formatStdinDiag(stdinDiag)}`);
 
   const pidReachable = resolvePidReachable(existing, srcAgentPid, srcPid);
 
@@ -1481,7 +1571,12 @@ function updateSession(sessionId, state, event, opts = {}) {
   const srcLastStopAt = isStopBoundary
     ? Date.now()
     : (existing && Number.isFinite(existing.lastStopAt) ? existing.lastStopAt : null);
-  const base = { sourcePid: srcPid, wtHwnd: srcWtHwnd, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, tmuxSocket: srcTmuxSocket, tmuxClient: srcTmuxClient, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, platform: srcPlatform, model: srcModel, provider: srcProvider, codexOriginator: srcCodexOriginator, codexSource: srcCodexSource, ghosttyTerminalId: srcGhosttyTerminalId, sessionTitle: srcSessionTitle, contextUsage: srcContextUsage, assistantLastOutput: srcAssistantLastOutput, assistantLastOutputTruncated: srcAssistantLastOutputTruncated, lastToolName: srcToolName, transcriptPath: srcTranscriptPath, recentEvents, pidReachable, lastToolBoundaryAt: srcLastToolBoundaryAt, lastStopAt: srcLastStopAt, awaitingInputSinceStop: resolveAwaitingInputSinceStop(existing, event), muteNotificationSound: state === "notification" && muteNotificationSound === true };
+  // metadataUpdatedAt rides along with the quota fields it timestamps: a
+  // lifecycle event that carries the quota forward from `existing` must not
+  // silently reset its freshness stamp, or stale carried-over quota would
+  // win display arbitration on updatedAt alone.
+  const srcMetadataUpdatedAt = existing && Number.isFinite(existing.metadataUpdatedAt) ? existing.metadataUpdatedAt : null;
+  const base = { sourcePid: srcPid, wtHwnd: srcWtHwnd, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, tmuxSocket: srcTmuxSocket, tmuxClient: srcTmuxClient, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, platform: srcPlatform, model: srcModel, provider: srcProvider, codexOriginator: srcCodexOriginator, codexSource: srcCodexSource, ghosttyTerminalId: srcGhosttyTerminalId, sessionTitle: srcSessionTitle, contextUsage: srcContextUsage, antigravityQuota: srcAntigravityQuota, claudeQuota: srcClaudeQuota, metadataUpdatedAt: srcMetadataUpdatedAt, assistantLastOutput: srcAssistantLastOutput, assistantLastOutputTruncated: srcAssistantLastOutputTruncated, lastToolName: srcToolName, transcriptPath: srcTranscriptPath, recentEvents, pidReachable, lastToolBoundaryAt: srcLastToolBoundaryAt, lastStopAt: srcLastStopAt, awaitingInputSinceStop: resolveAwaitingInputSinceStop(existing, event), muteNotificationSound: state === "notification" && muteNotificationSound === true };
   if (preserveCompletionAck) base.requiresCompletionAck = true;
 
   // Evict oldest session if at capacity and this is a new session.
@@ -1599,6 +1694,13 @@ function updateSession(sessionId, state, event, opts = {}) {
     "PreCompact",
     "PostCompact",
     "Notification",
+    // Kimi Code native events (#563). PermissionResult is the definitive
+    // "approval answered" signal (decision: approved/rejected). On the
+    // rejected path upstream fires PostToolUseFailure BEFORE
+    // PermissionResult — both clear, so ordering does not matter here.
+    // Interrupt is the user's Esc: any pending approval UI is gone with it.
+    "PermissionResult",
+    "Interrupt",
   ]);
   const shouldClearKimiPermission = srcAgentId === "kimi-cli"
     && KIMI_HOLD_CLEAR_EVENTS.has(event);
@@ -1896,9 +1998,12 @@ function detectRunningAgentProcesses(callback) {
     // Keep this WQL filter built only from hard-coded literals. Real process
     // names are matched by WMI; external input must not be spliced into it.
     const psScript =
-      "$names = 'claude.exe','codex.exe','copilot.exe','gemini.exe','agy.exe','codebuddy.exe','kiro-cli.exe','kimi.exe','codewhale.exe','opencode.exe','pi.exe','hermes.exe','qodercli.exe','qoder-cli.exe'; " +
+      "$names = 'claude.exe','codex.exe','copilot.exe','gemini.exe','agy.exe','codebuddy.exe','kiro-cli.exe','kimi.exe','codewhale.exe','opencode.exe','pi.exe','hermes.exe','qodercli.exe','qoder-cli.exe','qoderwork.exe'; " +
       "$nameFilters = $names | ForEach-Object { \"Name='$_'\" }; " +
-      "$filter = ($nameFilters + \"(Name='node.exe' AND CommandLine LIKE '%claude-code%')\") -join ' OR '; " +
+      // kimi.exe only covers the native (install-script) build; the npm
+      // install of Kimi Code runs as node.exe, recognizable by the package
+      // directory name in its command line (#563).
+      "$filter = ($nameFilters + \"(Name='node.exe' AND CommandLine LIKE '%claude-code%')\" + \"(Name='node.exe' AND CommandLine LIKE '%kimi-code%')\") -join ' OR '; " +
       "$match = Get-CimInstance Win32_Process -Filter $filter | Select-Object -First 1; " +
       "if ($match) { $match.ProcessId }";
     execFile(
@@ -1908,7 +2013,7 @@ function detectRunningAgentProcesses(callback) {
       (err, stdout) => done(!err && /\d+/.test(stdout))
     );
   } else {
-    exec("pgrep -f 'claude-code|codex|copilot|codebuddy|kimi|@earendil-works/pi-coding-agent|pi-coding-agent/dist/cli\\.js' || pgrep -x 'gemini' || pgrep -x 'agy' || pgrep -x 'kiro-cli' || pgrep -x 'codewhale' || pgrep -x 'opencode' || pgrep -x 'hermes' || pgrep -x 'qodercli' || pgrep -x 'qoder-cli'", { timeout: 3000 },
+    exec("pgrep -f 'claude-code|codex|copilot|codebuddy|kimi|@earendil-works/pi-coding-agent|pi-coding-agent/dist/cli\\.js' || pgrep -x 'gemini' || pgrep -x 'agy' || pgrep -x 'kiro-cli' || pgrep -x 'codewhale' || pgrep -x 'opencode' || pgrep -x 'hermes' || pgrep -x 'qodercli' || pgrep -x 'qoder-cli' || pgrep -x '[Qq]oder[Ww]ork'", { timeout: 3000 },
       (err) => done(!err)
     );
   }
@@ -1923,7 +2028,7 @@ function stopStaleCleanup() {
   if (staleCleanupTimer) { clearInterval(staleCleanupTimer); staleCleanupTimer = null; }
 }
 
-function startKimiPermissionPoll(sessionId) {
+function startKimiPermissionPoll(sessionId, permissionDetail = null) {
   if (!sessionId) return;
   // DND / agent permissions-off both suppress the passive bubble at creation
   // time (see shouldSuppressKimiNotifyBubble in permission.js). Skipping the
@@ -1958,7 +2063,15 @@ function startKimiPermissionPoll(sessionId) {
   // Avoid stacking duplicate passive bubbles for the same pending request.
   // Refreshing the hold timer should not create extra UI noise.
   if (!existing && typeof ctx.showKimiNotifyBubble === "function") {
-    ctx.showKimiNotifyBubble({ sessionId });
+    // #563: Kimi Code native PermissionRequest carries what actually needs
+    // approval; the bubble shows the real command instead of generic copy.
+    // Legacy synthesized requests pass null detail and keep the old text.
+    ctx.showKimiNotifyBubble({
+      sessionId,
+      toolName: permissionDetail && permissionDetail.toolName ? permissionDetail.toolName : null,
+      permissionAction: permissionDetail && permissionDetail.permissionAction ? permissionDetail.permissionAction : null,
+      permissionCommand: permissionDetail && permissionDetail.permissionCommand ? permissionDetail.permissionCommand : null,
+    });
   }
 }
 
@@ -2182,7 +2295,9 @@ return {
   emitSessionSnapshot, broadcastSessionSnapshot, getLastSessionSnapshot,
   getActiveSessionAliasKeys,
   dismissSession,
+  formatStdinDiag,
   updateSessionFocusMetadata,
+  updateSessionMetadata,
   clearPermissionNotification,
   ackSessionCompletion,
   clearSessionsByAgent,

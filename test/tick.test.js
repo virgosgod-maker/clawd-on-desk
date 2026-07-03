@@ -589,3 +589,212 @@ describe("tick adaptive polling", () => {
     assert.equal(cursorCalls, callsAfterEyeMove + 1);
   });
 });
+
+describe("tick spin detection (dizzy gesture)", () => {
+  let cursor;
+  let loader;
+  let tickApi;
+  let ctx;
+  let statesSeen;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    cursor = { x: 40, y: 40 };
+    loader = loadTickWithScreen(() => ({ ...cursor }));
+    statesSeen = [];
+  });
+
+  afterEach(() => {
+    if (tickApi) tickApi.cleanup();
+    if (loader) loader.restore();
+    mock.timers.reset();
+    tickApi = null;
+    ctx = null;
+  });
+
+  // A theme that supports dizzy, with idle-anim / sleep pushed far out of the way
+  // so they never fire during a multi-second gesture.
+  function dizzyTheme() {
+    const theme = cloneTheme(_defaultTheme);
+    theme.states.dizzy = ["clawd-dizzy.svg"];
+    theme.timings.autoReturn = theme.timings.autoReturn || {};
+    theme.timings.autoReturn.dizzy = 6000;
+    theme.timings.mouseIdleTimeout = 100000;
+    theme.timings.mouseSleepTimeout = 100000;
+    return theme;
+  }
+
+  // Eye-tracking origin for the fixed getObjRect() { x:20, y:20, w:60, h:60 }.
+  function eyeCenter(theme) {
+    const obj = { x: 20, y: 20, w: 60, h: 60 };
+    return {
+      cx: obj.x + obj.w * theme.eyeTracking.eyeRatioX,
+      cy: obj.y + obj.h * theme.eyeTracking.eyeRatioY,
+    };
+  }
+
+  // Drive `steps` circling samples at radius R, dTheta per step — one 100ms tick each.
+  function circle(cx, cy, R, startAngle, dTheta, steps) {
+    for (let i = 0; i < steps; i++) {
+      const a = startAngle + i * dTheta;
+      cursor.x = cx + R * Math.cos(a);
+      cursor.y = cy + R * Math.sin(a);
+      mock.timers.tick(100);
+    }
+  }
+
+  it("triggers dizzy after 2+ full circles around the pet", () => {
+    const theme = dizzyTheme();
+    ctx = makeCtx(theme, statesSeen);
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    const { cx, cy } = eyeCenter(theme);
+    circle(cx, cy, 40, 0, Math.PI / 6, 36); // 3 turns worth of samples
+
+    assert.ok(statesSeen.includes("dizzy"), `expected dizzy, saw ${JSON.stringify(statesSeen)}`);
+  });
+
+  it("does NOT trigger on back-and-forth wiggling (signed cancellation)", () => {
+    const theme = dizzyTheme();
+    ctx = makeCtx(theme, statesSeen);
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    const { cx, cy } = eyeCenter(theme);
+    const R = 40;
+    const a = 0.3;
+    const b = 2.3; // ~2 rad swing, well under PI so nothing wraps
+    for (let i = 0; i < 40; i++) {
+      const angle = (i % 2 === 0) ? a : b;
+      cursor.x = cx + R * Math.cos(angle);
+      cursor.y = cy + R * Math.sin(angle);
+      mock.timers.tick(100);
+    }
+
+    assert.ok(!statesSeen.includes("dizzy"), `expected no dizzy, saw ${JSON.stringify(statesSeen)}`);
+  });
+
+  it("does NOT trigger from sub-pixel jitter near the center", () => {
+    const theme = dizzyTheme();
+    ctx = makeCtx(theme, statesSeen);
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    const { cx, cy } = eyeCenter(theme);
+    const jitter = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]];
+    for (let i = 0; i < 40; i++) {
+      const [dx, dy] = jitter[i % jitter.length];
+      cursor.x = cx + dx;
+      cursor.y = cy + dy;
+      mock.timers.tick(100);
+    }
+
+    assert.ok(!statesSeen.includes("dizzy"), `expected no dizzy from jitter, saw ${JSON.stringify(statesSeen)}`);
+  });
+
+  it("does NOT trigger on themes without a dizzy state (Calico / Cloudling)", () => {
+    const theme = dizzyTheme();
+    delete theme.states.dizzy;
+    delete theme.timings.autoReturn.dizzy;
+    ctx = makeCtx(theme, statesSeen);
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    const { cx, cy } = eyeCenter(theme);
+    circle(cx, cy, 40, 0, Math.PI / 6, 36);
+
+    assert.ok(!statesSeen.includes("dizzy"), `unsupported theme should stay idle, saw ${JSON.stringify(statesSeen)}`);
+  });
+
+  it("resets the meter after a pause so a broken-up gesture doesn't accumulate", () => {
+    const theme = dizzyTheme();
+    ctx = makeCtx(theme, statesSeen);
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    const { cx, cy } = eyeCenter(theme);
+    circle(cx, cy, 40, 0, Math.PI / 6, 18); // ~1.5 turns
+    assert.ok(!statesSeen.includes("dizzy"), "1.5 turns alone should not trigger");
+
+    for (let i = 0; i < 8; i++) mock.timers.tick(100); // 800ms pause, cursor held still
+
+    circle(cx, cy, 40, 0, Math.PI / 6, 18); // another ~1.5 turns after the reset
+    assert.ok(!statesSeen.includes("dizzy"), `pause should reset the meter, saw ${JSON.stringify(statesSeen)}`);
+  });
+});
+
+describe("tick free roam cancellation (#569)", () => {
+  let cursor;
+  let loader;
+  let tickApi;
+  let ctx;
+  let statesSeen;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    cursor = { x: 40, y: 40 };
+    loader = loadTickWithScreen(() => ({ ...cursor }));
+    statesSeen = [];
+  });
+
+  afterEach(() => {
+    if (tickApi) tickApi.cleanup();
+    if (loader) loader.restore();
+    mock.timers.reset();
+    tickApi = null;
+    ctx = null;
+  });
+
+  function makeRoamCtx() {
+    const theme = cloneTheme(_defaultTheme);
+    const c = makeCtx(theme, statesSeen);
+    // Pet is mid-walk: roam.js switched the visual state to "roam".
+    c.currentState = "roam";
+    c.roamCancels = 0;
+    c.roam = {
+      enabled: true,
+      cancelRoam() { c.roamCancels += 1; },
+      tick() {},
+    };
+    return c;
+  }
+
+  it("cancels an active walk when the mouse moves during state 'roam'", () => {
+    ctx = makeRoamCtx();
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    // Baseline ticks with a still cursor — records lastCursor, must not cancel.
+    mock.timers.tick(800);
+    assert.equal(ctx.roamCancels, 0, "no cancel while the mouse is still");
+
+    // Mouse moves mid-walk — the next tick must cancel the walk. Before the
+    // #569 follow-up, state "roam" was excluded from the cursor poll gate and
+    // this cancel block was unreachable during a walk.
+    cursor = { x: 300, y: 260 };
+    mock.timers.tick(800);
+    assert.ok(ctx.roamCancels >= 1, "mouse move during an active walk must cancel roam");
+  });
+
+  it("does not cancel while the mouse stays still for the whole walk", () => {
+    ctx = makeRoamCtx();
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    for (let i = 0; i < 6; i++) mock.timers.tick(800);
+    assert.equal(ctx.roamCancels, 0, "a still mouse must never cancel the walk");
+  });
+
+  it("does not cancel a walk while idlePaused (e.g. menu open)", () => {
+    ctx = makeRoamCtx();
+    ctx.idlePaused = true;
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+
+    mock.timers.tick(800);
+    cursor = { x: 300, y: 260 };
+    mock.timers.tick(800);
+    assert.equal(ctx.roamCancels, 0, "idlePaused suppresses roam cursor cancellation");
+  });
+});
