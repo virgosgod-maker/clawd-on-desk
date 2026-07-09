@@ -960,6 +960,7 @@ function loadTelegramApprovalTabForTest({
   const updates = [];
   const commands = [];
   const renderRequests = [];
+  const timers = [];
 
   const document = {
     body,
@@ -982,6 +983,12 @@ function loadTelegramApprovalTabForTest({
       if (name === "telegramApproval.tokenInfo") {
         return Promise.resolve({ status: "ok", configured: false, masked: "" });
       }
+      if (name === "feishuApproval.status") {
+        return Promise.resolve({ status: "ok", state: { status: "stopped", secretsStored: false } });
+      }
+      if (name === "feishuApproval.secretInfo") {
+        return Promise.resolve({ status: "ok", configured: false });
+      }
       return Promise.resolve({ status: "ok" });
     },
     ...settingsAPI,
@@ -992,6 +999,13 @@ function loadTelegramApprovalTabForTest({
     requestAnimationFrame: (cb) => {
       cb();
       return 1;
+    },
+    setTimeout: (cb, ms) => {
+      timers.push({ cb, ms, cleared: false });
+      return timers.length;
+    },
+    clearTimeout: (id) => {
+      if (timers[id - 1]) timers[id - 1].cleared = true;
     },
     window: null,
     globalThis: null,
@@ -1011,6 +1025,12 @@ function loadTelegramApprovalTabForTest({
           enabled: false,
           allowedTgUserId: "123456789",
           targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "",
+          connectionTimeoutSeconds: 15,
         },
       },
       activeTab: "telegram-approval",
@@ -1084,7 +1104,7 @@ function loadTelegramApprovalTabForTest({
   }
   render();
 
-  return { core, content, updates, commands, render, renderRequests };
+  return { core, content, updates, commands, render, renderRequests, timers };
 }
 
 function loadAnimOverridesTabForTest({
@@ -1272,6 +1292,8 @@ describe("settings renderer browser environment", () => {
     const agentOrderSource = fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8");
 
     assert.ok(rendererSource.includes("globalThis.ClawdSettingsCore"));
+    assert.ok(rendererSource.includes("settingsAPI.onRemoteApprovalStatusChanged"));
+    assert.ok(rendererSource.includes("tab.refreshRuntimeStatus(payload)"));
     assert.ok(coreSource.includes("ClawdSettingsSizeSlider"));
     assert.ok(i18nSource.includes("globalThis"));
     assert.ok(doctorModalSource.includes("globalThis"));
@@ -1292,6 +1314,7 @@ describe("settings renderer browser environment", () => {
       assert.ok(!source.includes("settingsAPI.onChanged"), `${path.basename(file)} must not subscribe to settingsAPI.onChanged`);
       assert.ok(!source.includes("settingsAPI.onShortcutRecordKey"), `${path.basename(file)} must not subscribe to settingsAPI.onShortcutRecordKey`);
       assert.ok(!source.includes("settingsAPI.onShortcutFailuresChanged"), `${path.basename(file)} must not subscribe to settingsAPI.onShortcutFailuresChanged`);
+      assert.ok(!source.includes("settingsAPI.onRemoteApprovalStatusChanged"), `${path.basename(file)} must not subscribe to remote approval status directly`);
     }
   });
 
@@ -2001,6 +2024,260 @@ describe("settings renderer browser environment", () => {
     assert.equal(commandCalls.some((call) => call.name === "telegramApproval.test"), false);
   });
 
+  it("renders Feishu approval setup and saves secrets outside prefs", async () => {
+    const commandCalls = [];
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name, payload) => {
+          commandCalls.push({ name, payload });
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "stopped", configured: false, secretsStored: false },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: false });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+
+    const feishuCard = harness.content.querySelector(".feishu-approval-channel-card");
+    assert.ok(feishuCard, "Feishu approval card should render");
+    const inputs = feishuCard.querySelectorAll("input");
+    inputs[0].value = "cli_123";
+    inputs[1].value = "app_secret";
+    inputs[2].value = "verify";
+    inputs[3].value = "encrypt";
+    feishuCard.querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSaveSecrets")
+      .dispatchEvent({ type: "click" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(commandCalls.find((call) => call.name === "feishuApproval.setSecrets"))), {
+      name: "feishuApproval.setSecrets",
+      payload: {
+        appId: "cli_123",
+        appSecret: "app_secret",
+        verificationToken: "verify",
+        encryptKey: "encrypt",
+      },
+    });
+    assert.equal(harness.updates.some((call) => call.key === "feishuApproval"), false);
+  });
+
+  it("saves Feishu approver config and enables testing only when runtime is configured", async () => {
+    const commandCalls = [];
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name, payload) => {
+          commandCalls.push({ name, payload });
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "running", configured: true, secretsStored: true },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+
+    const feishuCard = harness.content.querySelector(".feishu-approval-channel-card");
+    const inputs = feishuCard.querySelectorAll("input");
+    const approverInput = inputs[inputs.length - 1];
+    approverInput.value = "ou_f1a6f7f520883298be9b9fb9488c1aef";
+    approverInput.dispatchEvent({ type: "input" });
+    feishuCard.querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSaveApprover")
+      .dispatchEvent({ type: "click" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates.find((call) => call.key === "feishuApproval"))), {
+      key: "feishuApproval",
+      value: {
+        enabled: false,
+        idType: "open_id",
+        approverId: "ou_f1a6f7f520883298be9b9fb9488c1aef",
+        connectionTimeoutSeconds: 15,
+      },
+    });
+
+    harness.core.state.snapshot.feishuApproval = {
+      enabled: true,
+      idType: "open_id",
+      approverId: "ou_f1a6f7f520883298be9b9fb9488c1aef",
+      connectionTimeoutSeconds: 15,
+    };
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+    const testButton = harness.content.querySelector(".feishu-approval-channel-card")
+      .querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSendTest");
+    assert.equal(testButton.disabled, false);
+    testButton.dispatchEvent({ type: "click" });
+    assert.equal(commandCalls.some((call) => call.name === "feishuApproval.test"), true);
+  });
+
+  it("saves Feishu long connection timeout from settings", async () => {
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: true,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name) => {
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "running", configured: true, secretsStored: true },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+
+    const select = harness.content.querySelector(".feishu-approval-timeout-select");
+    assert.ok(select, "Feishu timeout select should render");
+    assert.equal(select.value, "15");
+    select.value = "30";
+    select.dispatchEvent({ type: "change" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates.find((call) => call.key === "feishuApproval"))), {
+      key: "feishuApproval",
+      value: {
+        enabled: true,
+        idType: "open_id",
+        approverId: "ou_1",
+        connectionTimeoutSeconds: 30,
+      },
+    });
+  });
+
+  it("refreshes Feishu status while long connection is starting", async () => {
+    let feishuStatusCalls = 0;
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: true,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name) => {
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            feishuStatusCalls += 1;
+            return Promise.resolve({
+              status: "ok",
+              state: feishuStatusCalls === 1
+                ? { status: "starting", configured: true, secretsStored: true }
+                : { status: "failed", configured: true, secretsStored: true, message: "connection timeout" },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(feishuStatusCalls, 1);
+    assert.equal(harness.timers.length, 1);
+    assert.equal(harness.timers[0].ms, 1000);
+
+    harness.timers[0].cb();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(feishuStatusCalls, 2);
+    assert.equal(harness.renderRequests.some((payload) => payload && payload.content === true), true);
+  });
+
   it("repaints Telegram approval after forced status refresh overlaps pending status", async () => {
     const staleStatus = createDeferred();
     const updatedStatus = createDeferred();
@@ -2115,7 +2392,7 @@ describe("settings renderer browser environment", () => {
 
     const deleteButton = harness.content
       .querySelectorAll("button")
-      .find((button) => button.textContent === "Delete legacy token file");
+      .find((button) => button.textContent === "telegramMigrationDeleteLegacyToken");
     assert.ok(deleteButton, "delete legacy token button should render for NATIVE_ACTIVE");
 
     deleteButton.dispatchEvent({ type: "click" });
@@ -7000,6 +7277,155 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(core.tabs.animOverrides.patchInPlace({ themeOverrides: { cloudling: { states: {} } } }), false);
     assert.strictEqual(fetchCount, 0);
+  });
+
+  it("re-arms the WSL auto scan when the user leaves the Agents tab before the fetch resolves", async () => {
+    const detectCalls = [];
+    let resolveFirstFetch;
+    const firstFetch = new Promise((resolve) => { resolveFirstFetch = resolve; });
+    const pendingHints = {
+      checkedAt: 1,
+      agents: [],
+      skippedAgentIds: [],
+      wslAgents: [],
+      wslDistros: [],
+      wslPending: true,
+      wslSupported: true,
+    };
+    const scannedHints = { ...pendingHints, wslPending: false, wslDistros: [{ name: "Ubuntu", default: true }] };
+    const harness = loadAgentsTabForTest({
+      snapshot: { agents: {} },
+      settingsAPI: {
+        detectAgentInstallations: (opts) => {
+          detectCalls.push(opts || null);
+          if (detectCalls.length === 1) return firstFetch;
+          if (opts && opts.refreshWsl) return Promise.resolve(scannedHints);
+          return Promise.resolve(pendingHints);
+        },
+      },
+    });
+
+    // Mount fetch fires while the Agents tab is active…
+    const mountFetch = harness.core.ops.fetchAgentInstallationHints();
+    // …but the user switches away before it resolves.
+    harness.core.state.activeTab = "general";
+    resolveFirstFetch(pendingHints);
+    await mountFetch;
+    await Promise.resolve();
+
+    // The auto scan was (correctly) not fired for an absent user, but the
+    // fetched flag must be re-armed or the auto scan is lost for the session.
+    assert.strictEqual(detectCalls.length, 1, "no scan while the tab is not visible");
+    assert.strictEqual(harness.core.runtime.agentInstallationHintsFetched, false,
+      "fetched flag re-armed after the trigger was skipped");
+
+    // Returning to the tab re-fetches and kicks the real WSL scan.
+    harness.core.state.activeTab = "agents";
+    await harness.core.ops.fetchAgentInstallationHints();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const refreshCalls = detectCalls.filter((c) => c && c.refreshWsl === true);
+    assert.strictEqual(refreshCalls.length, 1, "returning to the tab fires the real WSL scan");
+    assert.strictEqual(harness.core.runtime.agentInstallationHints.wslPending, false);
+  });
+
+  it("first Agents-tab fetch that reports wslPending triggers exactly one WSL scan", async () => {
+    const detectCalls = [];
+    const pendingHints = {
+      checkedAt: 1,
+      agents: [],
+      skippedAgentIds: [],
+      wslAgents: [],
+      wslDistros: [],
+      wslPending: true,
+      wslSupported: true,
+    };
+    const scannedHints = { ...pendingHints, wslPending: false };
+    const harness = loadAgentsTabForTest({
+      snapshot: { agents: {} },
+      settingsAPI: {
+        detectAgentInstallations: (opts) => {
+          detectCalls.push(opts || null);
+          if (opts && opts.refreshWsl) return Promise.resolve(scannedHints);
+          return Promise.resolve(pendingHints);
+        },
+      },
+    });
+
+    await harness.core.ops.fetchAgentInstallationHints();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const refreshCalls = detectCalls.filter((c) => c && c.refreshWsl === true);
+    assert.strictEqual(refreshCalls.length, 1, "wslPending fetch on the active tab auto-triggers the scan once");
+    assert.strictEqual(harness.core.runtime.agentInstallationHints.wslPending, false);
+    assert.strictEqual(detectCalls.length, 2, "no further fetch after the scan settles");
+  });
+
+  it("WSL row offers Unpair on hooksFilesPresent even when the deployed badge is dark", () => {
+    function buildHarness(wslEntryOverrides) {
+      const detectionResult = {
+        checkedAt: 2,
+        agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
+        skippedAgentIds: [],
+        wslAgents: [{
+          agentId: "qwen-code",
+          agentName: "Qwen Code",
+          distro: "Ubuntu",
+          detectedInstalled: true,
+          confidence: "high",
+          reason: "parent-dir",
+          detail: "",
+          wslHome: "/home/u",
+          wslParentDir: "/home/u/.qwen",
+          hooksDeployed: false,
+          hooksFilesPresent: false,
+          ...wslEntryOverrides,
+        }],
+        wslDistros: [{ name: "Ubuntu", default: true }],
+        wslPending: false,
+        wslSupported: true,
+      };
+      const harness = loadAgentsTabForTest({
+        snapshot: {
+          agents: { "qwen-code": { integrationInstalled: false, enabled: false } },
+          dismissedAgentInstallHints: {},
+        },
+        agentMetadata: [
+          { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
+        ],
+        settingsAPI: {
+          detectAgentInstallations: () => Promise.resolve(detectionResult),
+        },
+      });
+      harness.core.runtime.agentInstallationHints = detectionResult;
+      harness.core.runtime.agentInstallationHintsFetched = true;
+      harness.core.ops.requestRender({ content: true });
+      return harness;
+    }
+
+    // Paired + registered: badge on, Pair + Unpair buttons.
+    let harness = buildHarness({ hooksDeployed: true, hooksFilesPresent: true });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 1);
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 2);
+
+    // Files on disk but registration gone (post-Unpair, or the distro was
+    // paired with a non-claude agent that registers in its own config):
+    // the badge goes dark but the Unpair entry point must survive.
+    harness = buildHarness({ hooksDeployed: false, hooksFilesPresent: true });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 0,
+      "badge dark without claude-settings registration");
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 2,
+      "Unpair stays available while hook files exist");
+
+    // Clean distro: no badge, Pair only.
+    harness = buildHarness({ hooksDeployed: false, hooksFilesPresent: false });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 0);
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 1,
+      "only Pair when nothing is deployed");
   });
 });
 
